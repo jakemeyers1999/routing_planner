@@ -162,7 +162,7 @@
 </head>
 <body>
   <div id="toolbar">
-    <img src="https://media.ffycdn.net/us/calltrackingmetrics/t3NpdwJWaUv1pHS2PYiE.png?width=180" alt="CTM Routing Planner" style="height:40px;vertical-align:middle;margin-right:20px;">
+    <img src="https://media.ffycdn.net/us/calltrackingmetrics/6CpdkYmzxL6U2TMLMKCo.png?width=180" alt="CTM Routing Planner" style="height:40px;vertical-align:middle;margin-right:20px;">
     <label>Node type:</label>
     <select id="nodeType">
       <option value="TrackingNumber">Tracking Number</option>
@@ -352,14 +352,10 @@
     let notesHTML = `<textarea class="node-notes-field" placeholder="Enter notes or description here..." oninput="window.saveNodeNotes(this, this.closest('.drawflow-node').dataset.id)" rows="2">${notesValue}</textarea>`;
     let bgColor = COLOR_PALETTE[(depth - 1) % COLOR_PALETTE.length];
     const styleStr = `background:${bgColor}; height:auto;`;
-    const hasEndActions = (data.endActions && data.endActions.length > 0) ? '✓' : '';
     const html = `<div data-type="${type}">
       <div class="shape-inner"><span class="drawflow-node-label" ondblclick="editLabel(this)">${defaultName}</span></div>
       ${outputInputsHTML}
       ${notesHTML}
-      <div style="margin-top:8px;border-top:1px dashed #01BDF6;padding-top:6px;">
-        <button class="end-actions-btn" onclick="event.stopPropagation();window.showEndActionsPanel(${newNodeId})">⚡ End Actions ${hasEndActions}</button>
-      </div>
     </div>`;
     const newNodeId = editor.addNode(
       String(type),
@@ -371,11 +367,17 @@
       data,
       html
     );
-    // Ensure full node rectangle receives the color
     setTimeout(function() {
       let nodeElem = document.getElementById('node-' + newNodeId);
-      if (nodeElem) nodeElem.style.background = bgColor;
-    }, 30);
+      if (nodeElem) {
+        nodeElem.style.background = bgColor;
+        const hasEndActions = (data.endActions && data.endActions.length > 0) ? '✓' : '';
+        const endActionsDiv = document.createElement('div');
+        endActionsDiv.style.cssText = 'margin-top:8px;border-top:1px dashed #01BDF6;padding-top:6px;';
+        endActionsDiv.innerHTML = `<button class="end-actions-btn" onclick="event.stopPropagation();window.showEndActionsPanel(${newNodeId})">⚡ End Actions ${hasEndActions}</button>`;
+        nodeElem.querySelector('.shape-inner').parentNode.appendChild(endActionsDiv);
+      }
+    }, 50);
     if (parentOutNodeId !== null && fromOutputIdx && Number(fromOutputIdx) > 0) {
       editor.addConnection(parentOutNodeId, newNodeId, "output_" + fromOutputIdx, "input_1");
     }
@@ -583,13 +585,12 @@
         `;
       case 'webhook':
         return `
-          <label>Webhook URL:</label>
+          <label>Webhook URL (POST):</label>
           <input type="text" value="${action.webhook_url || ''}" onchange="updateActionField(${idx}, 'webhook_url', this.value)" placeholder="https://example.com/webhook">
-          <label>HTTP Method:</label>
-          <select onchange="updateActionField(${idx}, 'http_method', this.value)">
-            <option value="POST" ${action.http_method === 'POST' ? 'selected' : ''}>POST</option>
-            <option value="GET" ${action.http_method === 'GET' ? 'selected' : ''}>GET</option>
-          </select>
+          <label>Custom Body (Mustache format):</label>
+          <textarea rows="4" style="width:95%;padding:6px;border-radius:4px;border:1px solid #01BDF6;background:#26344c;color:#fff;font-family:monospace;" onchange="updateActionField(${idx}, 'webhook_body', this.value)" placeholder='{ "caller_name": "{{caller_name}}", "phone": "{{caller_number}}" }'>${action.webhook_body || ''}</textarea>
+          <label>Notes:</label>
+          <input type="text" value="${action.webhook_notes || ''}" onchange="updateActionField(${idx}, 'webhook_notes', this.value)" placeholder="Internal notes about this webhook">
         `;
       case 'google_conversion':
         return `
@@ -630,7 +631,7 @@
   window.addEndAction = function() {
     const node = editor.getNodeFromId(currentEndActionsNodeId);
     let actions = node.data.endActions || [];
-    actions.push({ type: 'trigger', trigger_action: '', tag_value: '', webhook_url: '', http_method: 'POST', conversion_label: '', conversion_value: '', recipients: '', subject: '', include_details: true });
+    actions.push({ type: 'trigger', trigger_action: '', tag_value: '', webhook_url: '', webhook_body: '', webhook_notes: '', conversion_label: '', conversion_value: '', recipients: '', subject: '', include_details: true });
     node.data.endActions = actions;
     renderEndActionsList(actions);
   };
