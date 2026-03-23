@@ -49,6 +49,10 @@
     .drawflow-node .shape-inner {
       display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; font-size:1.1rem;
     }
+    .drawflow-node {
+      max-width: 180px;
+      min-width: 105px;
+    }
     .drawflow-node[data-type="TrackingNumber"]    { border:2.2px solid #1dace3!important; background:#68b6fa22;}
     .drawflow-node[data-type="IVR"]               { border:2.2px solid #8b97f8!important; background:#d3d8f941;}
     .drawflow-node[data-type="Queue"]             { border:2.2px solid #ffb4bb!important; background:#f9dee541;}
@@ -56,7 +60,17 @@
     .drawflow-node[data-type="ReceivingNumber"]   { border:2.2px solid #5fd18a!important; background:#edf9ee;}
     .drawflow-node[data-type="Voicemail"]         { border:2.2px solid #fac6a3!important; background:#fff4e6;}
     .drawflow-node[data-type="NoAnswer"]          { border:2.2px dashed #e24343!important; background:#fbe6e6;}
-    .drawflow-node-label { font-weight:bold; color:#01BDF6; font-size:1.04em;outline:none; }
+    .drawflow-node-label {
+      font-weight: bold;
+      color: #01BDF6;
+      font-size: 1.04em;
+      outline: none;
+      white-space: normal;
+      word-break: break-word;
+      max-width: 160px;
+      display: inline-block;
+      line-height: 1.1;
+    }
     .drawflow .output:hover, .drawflow .input:hover { box-shadow: 0 0 7px 2px #01BDF6; }
     #nodeMenu {
       display:none; position:fixed; z-index:99; background:#222d40;
@@ -116,9 +130,13 @@
     return SHAPE_CLASSES[(depth-1) % SHAPE_CLASSES.length];
   }
   const NODE_TYPES = [
-    { value: "IVR", label: "IVR Menu" },
+    { value: "IVR", label: "IVR Menu (3 paths)" },
+    { value: "IVR5", label: "IVR Menu (5 paths)" },
+    { value: "IVR10", label: "IVR Menu (10 paths)" },
     { value: "Queue", label: "Queue" },
-    { value: "SmartRouter", label: "Smart Router" },
+    { value: "SmartRouter", label: "Smart Router (3 paths)" },
+    { value: "SmartRouter5", label: "Smart Router (5 paths)" },
+    { value: "SmartRouter10", label: "Smart Router (10 paths)" },
     { value: "ReceivingNumber", label: "Receiving Number" },
     { value: "Voicemail", label: "Voicemail" },
     { value: "NoAnswer", label: "No Answer Branch" }
@@ -140,9 +158,15 @@
     }
   });
   let nodeCount = {
-    TrackingNumber:1, IVR:1, Queue:1, SmartRouter:1,
-    ReceivingNumber:1, Voicemail:1, NoAnswer:1
+    TrackingNumber:1,
+    IVR:1, IVR5:1, IVR10:1,
+    Queue:1,
+    SmartRouter:1, SmartRouter5:1, SmartRouter10:1,
+    ReceivingNumber:1,
+    Voicemail:1,
+    NoAnswer:1
   };
+
   function addNodeStandalone() {
     const type = document.getElementById('nodeType').value;
     addNodeWithDepth(type, null, null); 
@@ -155,6 +179,8 @@
     else if(type === 'IVR5') { outputs = 5; inputs = 1; }
     else if(type === 'IVR10') { outputs = 10; inputs = 1; }
     else if(type === 'SmartRouter') { outputs = 3; inputs = 1; }
+    else if(type === 'SmartRouter5') { outputs = 5; inputs = 1; }
+    else if(type === 'SmartRouter10') { outputs = 10; inputs = 1; }
     else if(type === 'NoAnswer') { outputs = 1; inputs = 1; }
     let depth = 1;
     let x = 300, y = 120;
