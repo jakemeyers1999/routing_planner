@@ -166,19 +166,13 @@
     <label>Node type:</label>
     <select id="nodeType">
       <option value="TrackingNumber">Tracking Number</option>
-      <option value="IVR">IVR Menu (3 paths)</option>
-      <option value="IVR5">IVR Menu (5 paths)</option>
-      <option value="IVR10">IVR Menu (10 paths)</option>
-      <option value="IVR15">IVR Menu (15 paths)</option>
-      <option value="IVR20">IVR Menu (20 paths)</option>
+      <option value="IVR">IVR Menu</option>
       <option value="Queue">Queue</option>
       <option value="SmartRouter">Smart Router</option>
-      <option value="SmartRouter5">Smart Router (5 paths)</option>
-      <option value="SmartRouter10">Smart Router (10 paths)</option>
-      <option value="SmartRouter15">Smart Router (15 paths)</option>
       <option value="ReceivingNumber">Receiving Number</option>
       <option value="Voicemail">Voicemail</option>
       <option value="NoAnswer">No Answer Branch</option>
+      <option value="EndAction">End Action</option>
     </select>
     <button onclick="addNodeStandalone()">+ Add Standalone Node</button>
     <button onclick="saveFlow()">💾 Save</button>
@@ -206,19 +200,13 @@
 <script>
   const labelMap = {
     TrackingNumber: "Tracking Number",
-    IVR5: "IVR Menu (5 paths)",
-    IVR10: "IVR Menu (10 paths)",
-    IVR15: "IVR Menu (15 paths)",
-    IVR20: "IVR Menu (20 paths)",
     IVR: "IVR Menu",
     Queue: "Queue",
     SmartRouter: "Smart Router",
-    SmartRouter5: "Smart Router (5 paths)",
-    SmartRouter10: "Smart Router (10 paths)",
-    SmartRouter15: "Smart Router (15 paths)",
     ReceivingNumber: "Receiving Number",
     Voicemail: "Voicemail",
-    NoAnswer: "No Answer Branch"
+    NoAnswer: "No Answer Branch",
+    EndAction: "End Action"
   };
   // Only use rectangles for node shape
   function getShapeClassByDepth(depth) {
@@ -235,19 +223,13 @@
     "#41C6EF"  // strong cyan
   ];
   const NODE_TYPES = [
-    { value: "IVR", label: "IVR Menu (3 paths)" },
-    { value: "IVR5", label: "IVR Menu (5 paths)" },
-    { value: "IVR10", label: "IVR Menu (10 paths)" },
-    { value: "IVR15", label: "IVR Menu (15 paths)" },
-    { value: "IVR20", label: "IVR Menu (20 paths)" },
+    { value: "IVR", label: "IVR Menu" },
     { value: "Queue", label: "Queue" },
-    { value: "SmartRouter", label: "Smart Router (3 paths)" },
-    { value: "SmartRouter5", label: "Smart Router (5 paths)" },
-    { value: "SmartRouter10", label: "Smart Router (10 paths)" },
-    { value: "SmartRouter15", label: "Smart Router (15 paths)" },
+    { value: "SmartRouter", label: "Smart Router" },
     { value: "ReceivingNumber", label: "Receiving Number" },
     { value: "Voicemail", label: "Voicemail" },
-    { value: "NoAnswer", label: "No Answer Branch" }
+    { value: "NoAnswer", label: "No Answer Branch" },
+    { value: "EndAction", label: "End Action" }
   ];
   const editor = new Drawflow(document.getElementById('drawflow'));
   editor.reroute = true;
@@ -267,33 +249,28 @@
   });
   let nodeCount = {
     TrackingNumber:1,
-    IVR:1, IVR5:1, IVR10:1, IVR15:1, IVR20:1,
+    IVR:1,
     Queue:1,
-    SmartRouter:1, SmartRouter5:1, SmartRouter10:1, SmartRouter15:1,
+    SmartRouter:1,
     ReceivingNumber:1,
     Voicemail:1,
-    NoAnswer:1
+    NoAnswer:1,
+    EndAction:1
   };
 
   function addNodeStandalone() {
     const type = document.getElementById('nodeType').value;
     addNodeWithDepth(type, null, null); 
   }
-  function addNodeWithDepth(type, parentOutNodeId, fromOutputIdx) {
+  function addNodeWithDepth(type, parentOutNodeId, fromOutputIdx, forcedOutputs = null) {
     const defaultName = labelMap[type] + ' ' + nodeCount[type]++;
     let outputs = 1, inputs = 1;
     let outputLabels = [];
     if(type === 'TrackingNumber') { outputs = 1; inputs = 0; }
-    else if(type === 'IVR') { outputs = 3; inputs = 1; }
-    else if(type === 'IVR5') { outputs = 5; inputs = 1; }
-    else if(type === 'IVR10') { outputs = 10; inputs = 1; }
-    else if(type === 'IVR15') { outputs = 15; inputs = 1; }
-    else if(type === 'IVR20') { outputs = 20; inputs = 1; }
+    else if(type === 'IVR') { outputs = forcedOutputs || 3; inputs = 1; }
     else if(type === 'SmartRouter') { outputs = 3; inputs = 1; }
-    else if(type === 'SmartRouter5') { outputs = 5; inputs = 1; }
-    else if(type === 'SmartRouter10') { outputs = 10; inputs = 1; }
-    else if(type === 'SmartRouter15') { outputs = 15; inputs = 1; }
     else if(type === 'NoAnswer') { outputs = 1; inputs = 1; }
+    else if(type === 'EndAction') { outputs = 0; inputs = 1; }
     // DO NOT add extra outputs for notes (fully remove any lingering notes logic)
 
     // generate default output labels (used only if not restoring from data)
@@ -324,15 +301,15 @@
     // main node content with editable output labels for multi-output nodes
 
     let outputInputsHTML = '';
-    if(type === 'IVR' || type === 'IVR5' || type === 'IVR10' || type === 'IVR15' || type === 'IVR20' || type === 'SmartRouter' || type === 'SmartRouter5' || type === 'SmartRouter10' || type === 'SmartRouter15') {
+    if(type === 'IVR' || type === 'SmartRouter') {
       let restored = [];
       if(data.outputLabels && Array.isArray(data.outputLabels))
         restored = data.outputLabels;
       while(restored.length < outputs) restored.push('');
       const getPlaceholder = (type, i) =>
-        (type === 'IVR' || type === 'IVR5' || type === 'IVR10' || type === 'IVR15' || type === 'IVR20') ? `Keypress ${i+1}` :
-        (type === 'SmartRouter' || type === 'SmartRouter5' || type === 'SmartRouter10' || type === 'SmartRouter15') ? `If ${i+1} is true then route here` :
-        "";
+        type === 'IVR' ? `Keypress ${i+1}` :
+        `If ${i+1} is true then route here`;
+      const addBtn = type === 'IVR' ? `<button style="background:#5fd18a;color:#182132;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.8rem;margin-top:4px;" onclick="window.addIVROutput(this)">+ Add Path</button>` : '';
       outputInputsHTML = `
         <div class='output-slot-list'>
           ${restored.map((v, i) => `
@@ -342,6 +319,7 @@
                 onchange="window.updateOutputLabel(this, '${type}', ${i}, this.value, this.closest('.drawflow-node').dataset.id)"
                 placeholder="${getPlaceholder(type, i)}">
             </div>`).join('')}
+          ${addBtn}
         </div>
       `;
     } else {
@@ -396,12 +374,13 @@
       const node = editor.getNodeFromId(nodeId);
       if(!node.data.outputLabels) node.data.outputLabels=[];
       node.data.outputLabels[idx] = value;
-      // Re-render node HTML with updated values
-      let shapeClass = node.class;
+      const outputs = node.outputs ? Object.keys(node.outputs).length : 3;
+      const addBtn = type === 'IVR' ? `<button style="background:#5fd18a;color:#182132;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.8rem;margin-top:4px;" onclick="window.addIVROutput(this)">+ Add Path</button>` : '';
       let html = `<div data-type="${type}" style="height:auto">
         <div class="shape-inner"><span class="drawflow-node-label" ondblclick="editLabel(this)">${node.data.label}</span></div>
         <div style=\"margin-top:5px;\">
-          ${node.data.outputLabels.map((v, i) => `<input type='text' style=\"width:90%;font-size:0.93em;margin-bottom:2px;background:#26344c;color:#8ecff7;border:1px solid #01BDF6;border-radius:4px;padding:2px 4px;\" value=\"${v||''}\" onchange=\"window.updateOutputLabel(this, '${type}', ${i}, this.value, this.parentNode.parentNode.parentNode.parentNode.dataset.id)\" placeholder=\"${(type === 'IVR' || type === 'IVR5' || type === 'IVR10') ? `Keypress ${i+1}` : ''}\">`).join('')}
+          ${node.data.outputLabels.map((v, i) => `<input type='text' style=\"width:90%;font-size:0.93em;margin-bottom:2px;background:#26344c;color:#8ecff7;border:1px solid #01BDF6;border-radius:4px;padding:2px 4px;\" value=\"${v||''}\" onchange=\"window.updateOutputLabel(this, '${type}', ${i}, this.value, this.parentNode.parentNode.parentNode.parentNode.dataset.id)\" placeholder=\"Keypress ${i+1}\">`).join('')}
+          ${addBtn}
         </div>
       </div>`;
       node.html = html;
@@ -424,6 +403,21 @@
     spanElem.style.display="none";
     inp.focus();
     inp.setSelectionRange(0, old.length);
+  };
+  window.addIVROutput = function(btn) {
+    const nodeDiv = btn.closest('.drawflow-node');
+    const nodeId = parseInt(nodeDiv.dataset.id);
+    const node = editor.getNodeFromId(nodeId);
+    if(!node || !node.data) return;
+    const currentOutputs = node.outputs ? Object.keys(node.outputs).length : 3;
+    const newOutputs = currentOutputs + 1;
+    if(!node.data.outputLabels) node.data.outputLabels = [];
+    node.data.outputLabels.push('');
+    node.data.outputCount = newOutputs;
+    const newOutputKey = 'output_' + newOutputs;
+    node.outputs[newOutputKey] = { connections: [] };
+    node.html = nodeDiv.innerHTML;
+    editor.updateNodeHtmlFromId(nodeId, nodeDiv.innerHTML);
   };
   function getName() {
     let d = new Date();
@@ -614,24 +608,32 @@
   };
 
   window.updateActionType = function(idx, type) {
+    if(!currentEndActionsNodeId) return;
     const node = editor.getNodeFromId(currentEndActionsNodeId);
+    if(!node || !node.data) return;
     let actions = node.data.endActions || [];
+    if(!actions[idx]) actions[idx] = { type: 'trigger', trigger_action: '', tag_value: '', webhook_url: '', webhook_body: '', webhook_notes: '', conversion_label: '', conversion_value: '', recipients: '', subject: '', include_details: true };
     actions[idx].type = type;
     node.data.endActions = actions;
     renderEndActionsList(actions);
   };
 
   window.updateActionField = function(idx, field, value) {
+    if(!currentEndActionsNodeId) return;
     const node = editor.getNodeFromId(currentEndActionsNodeId);
+    if(!node || !node.data) return;
     let actions = node.data.endActions || [];
+    if(!actions[idx]) return;
     actions[idx][field] = value;
     node.data.endActions = actions;
   };
 
   window.addEndAction = function() {
+    if(!currentEndActionsNodeId) return;
     const node = editor.getNodeFromId(currentEndActionsNodeId);
+    if(!node || !node.data) return;
     let actions = node.data.endActions || [];
-    actions.push({ type: 'trigger', trigger_action: '', tag_value: '', webhook_url: '', webhook_body: '', webhook_notes: '', conversion_label: '', conversion_value: '', recipients: '', subject: '', include_details: true });
+    actions.push({ type: 'webhook', trigger_action: '', tag_value: '', webhook_url: '', webhook_body: '', webhook_notes: '', conversion_label: '', conversion_value: '', recipients: '', subject: '', include_details: true });
     node.data.endActions = actions;
     renderEndActionsList(actions);
   };
