@@ -26,9 +26,15 @@
       min-height: 1500px;
     }
     .drawflow-node.shape-rect   { border-radius: 7px; background: #ddeaff; }
-    .drawflow-node.shape-diamond { transform: rotate(45deg); width:110px !important; height:110px !important; border-radius:7px; background: #c4e0fa; }
-    .drawflow-node.shape-diamond .shape-inner { transform: rotate(-45deg); }
-    .drawflow-node.shape-circle  { border-radius: 50%; width:96px !important; height:96px !important; background: #ffeaef; }
+    .drawflow-node.shape-trapezoid {
+      clip-path: polygon(18% 0%, 82% 0%, 100% 100%, 0% 100%);
+      width: 170px !important;
+      height: 100px !important;
+      background: #c4e0fa;
+      border-radius: 12px;
+    }
+    .drawflow-node.shape-circle  { border-radius: 50%; width:170px !important; height:170px !important; background: #ffeaef; }
+    .drawflow-node.shape-circle .output-labels-vertlist { position: relative; top: 10px; left: 0; display: flex; flex-direction: column; align-items: center; }
     .drawflow-node.shape-hex {
       clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%);
       width: 105px !important; height: 105px !important;
@@ -50,8 +56,10 @@
       display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; font-size:1.1rem;
     }
     .drawflow-node {
-      max-width: 180px;
+      max-width: 220px;
       min-width: 105px;
+      min-height: 140px;
+      padding-bottom: 30px; /* Ensure space at node bottom for output port */
     }
     .drawflow-node[data-type="TrackingNumber"]    { border:2.2px solid #1dace3!important; background:#68b6fa22;}
     .drawflow-node[data-type="IVR"]               { border:2.2px solid #8b97f8!important; background:#d3d8f941;}
@@ -72,6 +80,60 @@
       line-height: 1.1;
     }
     .drawflow .output:hover, .drawflow .input:hover { box-shadow: 0 0 7px 2px #01BDF6; }
+    .output-slot-list {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      min-height: 0;
+      margin-bottom: 12px;
+      gap: 4px;
+    }
+    .output-slot-row {
+      display: flex;
+      align-items: center;
+      flex: 1 1 0;
+      height: 24px;
+      margin: 0;
+    }
+    .output-label-txt {
+      width: 76%;
+      font-size: 0.93em;
+      background: #26344c;
+      color: #8ecff7;
+      border: 1px solid #01BDF6;
+      border-radius: 4px;
+      padding: 2px 4px;
+      margin-right: 2px;
+    }
+    .node-notes-field {
+      margin-top: 16px;
+      width: 98%;
+      min-height: 38px;
+      max-height: 120px;
+      z-index: 2;
+      position: relative;
+      display: block;
+      clear: both;
+      width: 98%;
+      min-height: 38px;
+      max-height: 95px;
+      margin-top: 7px;
+      font-size: 1em;
+      border-radius: 6px;
+      background: #ffffe9;
+      color: #555;
+      padding: 6px 7px;
+      border: 1.7px dashed #98d;
+      resize: vertical;
+      box-sizing: border-box;
+      outline: none;
+      font-family: inherit;
+      line-height: 1.2;
+    }
+    .node-notes-field:focus {
+      border-color: #21bdf6;
+      background: #fffbe4;
+    }
     #nodeMenu {
       display:none; position:fixed; z-index:99; background:#222d40;
       border:2px solid #01BDF6; border-radius:7px; color:#fff; min-width:188px; font-size:1rem;
@@ -119,16 +181,26 @@
     IVR: "IVR Menu",
     Queue: "Queue",
     SmartRouter: "Smart Router",
+    SmartRouter5: "Smart Router (5 paths)",
+    SmartRouter10: "Smart Router (10 paths)",
     ReceivingNumber: "Receiving Number",
     Voicemail: "Voicemail",
     NoAnswer: "No Answer Branch"
   };
-  const SHAPE_CLASSES = [
-    "shape-rect", "shape-diamond", "shape-circle", "shape-hex", "shape-parallelogram", "shape-octagon"
-  ];
+  // Only use rectangles for node shape
   function getShapeClassByDepth(depth) {
-    return SHAPE_CLASSES[(depth-1) % SHAPE_CLASSES.length];
+    return "shape-rect";
   }
+  // Palette for color by depth
+  const COLOR_PALETTE = [
+    "#4398EC", // bold blue
+    "#FC635D", // strong red
+    "#FED13A", // strong yellow
+    "#42D57B", // strong green
+    "#A259DB", // strong violet
+    "#EF8649", // strong orange
+    "#41C6EF"  // strong cyan
+  ];
   const NODE_TYPES = [
     { value: "IVR", label: "IVR Menu (3 paths)" },
     { value: "IVR5", label: "IVR Menu (5 paths)" },
@@ -174,6 +246,7 @@
   function addNodeWithDepth(type, parentOutNodeId, fromOutputIdx) {
     const defaultName = labelMap[type] + ' ' + nodeCount[type]++;
     let outputs = 1, inputs = 1;
+    let outputLabels = [];
     if(type === 'TrackingNumber') { outputs = 1; inputs = 0; }
     else if(type === 'IVR') { outputs = 3; inputs = 1; }
     else if(type === 'IVR5') { outputs = 5; inputs = 1; }
@@ -182,21 +255,69 @@
     else if(type === 'SmartRouter5') { outputs = 5; inputs = 1; }
     else if(type === 'SmartRouter10') { outputs = 10; inputs = 1; }
     else if(type === 'NoAnswer') { outputs = 1; inputs = 1; }
+    // DO NOT add extra outputs for notes (fully remove any lingering notes logic)
+
+    // generate default output labels (used only if not restoring from data)
+    for(let i=0;i<outputs;i++) outputLabels.push('');
     let depth = 1;
     let x = 300, y = 120;
     if (parentOutNodeId !== null) {
       try {
         const parentNode = editor.getNodeFromId(parentOutNodeId);
         depth = (parentNode.data.depth || 1) + 1;
-        // Deterministic: to right and down
         x = parentNode.pos_x + 220;
         y = parentNode.pos_y + (depth * 32);
       } catch { depth = 2; }
     }
     let shapeClass = getShapeClassByDepth(depth);
-    const html = `<div data-type="${type}" style="height:78px">
-        <div class="shape-inner"><span class="drawflow-node-label" ondblclick="editLabel(this)">${defaultName}</span></div>
-      </div>`;
+
+    // gather user-specified labels if reloading node
+    let data = { type: String(type), label: String(defaultName), depth };
+    if(parentOutNodeId==null) data.outputLabels = [...outputLabels];
+    // If reusing node (i.e., Drawflow reload), load existing output labels:
+    if(fromOutputIdx && parentOutNodeId) {
+      try {
+        const parentNode = editor.getNodeFromId(parentOutNodeId);
+        if(parentNode.data && parentNode.data.outputLabels) data.outputLabels = [...parentNode.data.outputLabels];
+      } catch {}
+    }
+
+    // main node content with editable output labels for multi-output nodes
+
+    let outputInputsHTML = '';
+    if(type === 'IVR' || type === 'IVR5' || type === 'IVR10' || type === 'SmartRouter' || type === 'SmartRouter5' || type === 'SmartRouter10') {
+      let restored = [];
+      if(data.outputLabels && Array.isArray(data.outputLabels))
+        restored = data.outputLabels;
+      while(restored.length < outputs) restored.push('');
+      const getPlaceholder = (type, i) =>
+        (type === 'IVR' || type === 'IVR5' || type === 'IVR10') ? `Keypress ${i+1}` :
+        (type === 'SmartRouter' || type === 'SmartRouter5' || type === 'SmartRouter10') ? `If ${i+1} is true then route here` :
+        "";
+      outputInputsHTML = `
+        <div class='output-slot-list'>
+          ${restored.map((v, i) => `
+            <div class='output-slot-row'>
+              <input type='text' class='output-label-txt'
+                value="${v}"
+                onchange="window.updateOutputLabel(this, '${type}', ${i}, this.value, this.closest('.drawflow-node').dataset.id)"
+                placeholder="${getPlaceholder(type, i)}">
+            </div>`).join('')}
+        </div>
+      `;
+    } else {
+      outputInputsHTML = '';
+    }
+    // Add notes textarea below output labels
+    let notesValue = (data.notesValue !== undefined) ? data.notesValue : '';
+    let notesHTML = `<textarea class="node-notes-field" placeholder="Enter notes or description here..." oninput="window.saveNodeNotes(this, this.closest('.drawflow-node').dataset.id)" rows="2">${notesValue}</textarea>`;
+    let bgColor = COLOR_PALETTE[(depth - 1) % COLOR_PALETTE.length];
+    const styleStr = `background:${bgColor}; height:auto;`;
+    const html = `<div data-type="${type}">
+      <div class="shape-inner"><span class="drawflow-node-label" ondblclick="editLabel(this)">${defaultName}</span></div>
+      ${outputInputsHTML}
+      ${notesHTML}
+    </div>`;
     const newNodeId = editor.addNode(
       String(type),
       inputs,
@@ -204,12 +325,43 @@
       x,
       y,
       shapeClass,
-      { type: String(type), label: String(defaultName), depth },
+      data,
       html
     );
+    // Ensure full node rectangle receives the color
+    setTimeout(function() {
+      let nodeElem = document.getElementById('node-' + newNodeId);
+      if (nodeElem) nodeElem.style.background = bgColor;
+    }, 30);
     if (parentOutNodeId !== null && fromOutputIdx && Number(fromOutputIdx) > 0) {
       editor.addConnection(parentOutNodeId, newNodeId, "output_" + fromOutputIdx, "input_1");
     }
+  }
+
+  window.saveNodeNotes = function(textarea, nodeId) {
+    try {
+      const node = editor.getNodeFromId(nodeId);
+      node.data.notesValue = textarea.value;
+    } catch {}
+  }
+
+  // Handler for output label edits on-the-fly
+  window.updateOutputLabel = function(inputElem, type, idx, value, nodeId) {
+    try {
+      const node = editor.getNodeFromId(nodeId);
+      if(!node.data.outputLabels) node.data.outputLabels=[];
+      node.data.outputLabels[idx] = value;
+      // Re-render node HTML with updated values
+      let shapeClass = node.class;
+      let html = `<div data-type="${type}" style="height:auto">
+        <div class="shape-inner"><span class="drawflow-node-label" ondblclick="editLabel(this)">${node.data.label}</span></div>
+        <div style=\"margin-top:5px;\">
+          ${node.data.outputLabels.map((v, i) => `<input type='text' style=\"width:90%;font-size:0.93em;margin-bottom:2px;background:#26344c;color:#8ecff7;border:1px solid #01BDF6;border-radius:4px;padding:2px 4px;\" value=\"${v||''}\" onchange=\"window.updateOutputLabel(this, '${type}', ${i}, this.value, this.parentNode.parentNode.parentNode.parentNode.dataset.id)\" placeholder=\"${(type === 'IVR' || type === 'IVR5' || type === 'IVR10') ? `Keypress ${i+1}` : ''}\">`).join('')}
+        </div>
+      </div>`;
+      node.html = html;
+      editor.updateNodeHtmlFromId(nodeId, html);
+    } catch {}
   }
   // Double-click label to edit inline
   window.editLabel = function(spanElem) {
@@ -267,7 +419,13 @@
   function showNodeMenu(x, y, parentId, outIndex) {
     const menu = document.getElementById('nodeMenu');
     const sel = document.getElementById('nodeMenuSelect');
-    sel.innerHTML = NODE_TYPES.map(t=>`<option value="${t.value}">${t.label}</option>`).join('');
+    // Look up the node data to determine type and notes output index
+    let n = editor.getNodeFromId(parentId);
+    if (n && typeof n.data === 'object' && typeof n.data.notesOutputIdx === 'number' && Number(outIndex)-1 === n.data.notesOutputIdx) {
+      sel.innerHTML = '<option value="Notes">Notes</option>';
+    } else {
+      sel.innerHTML = NODE_TYPES.filter(t => t.value !== 'Notes').map(t=>`<option value="${t.value}">${t.label}</option>`).join('');
+    }
     menu.style.left = (x+12) + 'px';
     menu.style.top = (y-10) + 'px';
     menu.style.display = 'block';
