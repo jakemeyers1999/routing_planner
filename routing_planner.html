@@ -7,235 +7,123 @@
   <style>
     * { box-sizing: border-box; }
     body { background: #182132; color: #fff; font-family: sans-serif; margin:0; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
-    #toolbar {
-      padding: 10px 20px;
-      background: #25324a;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-      flex-shrink: 0;
+
+    /* ── Toolbar ── */
+    #toolbar { padding:10px 20px; background:#25324a; display:flex; flex-wrap:wrap; align-items:center; gap:8px; flex-shrink:0; border-bottom:1px solid #1a2740; }
+    #toolbar img { height:34px; }
+    #toolbar label { font-size:12px; color:#90bee5; white-space:nowrap; }
+    #toolbar select { font-size:13px; background:#1a2639; color:#01BDF6; border:1px solid #01BDF6; border-radius:6px; padding:5px 8px; cursor:pointer; }
+    #toolbar button { font-size:12px; background:#01BDF6; color:#182132; border:none; border-radius:6px; padding:6px 12px; font-weight:bold; cursor:pointer; white-space:nowrap; }
+    #toolbar button:hover { background:#16c8ff; }
+    #toolbar .btn-arrange { background:#a259db; color:#fff; }
+    #toolbar .btn-arrange:hover { background:#b870f0; }
+    .toolbar-hint { font-size:11px; color:#5a7a9a; margin-left:auto; }
+
+    /* ── Canvas ── */
+    #drawflow-wrap { flex:1; overflow:hidden; padding:8px; }
+    #drawflow { background:#1e2d42; height:100%; width:100%; border-radius:12px; box-shadow:0 6px 16px #1116; position:relative; overflow:hidden; }
+    .drawflow { min-width:4000px; min-height:2400px; }
+
+    /* ── Node base ── */
+    .drawflow-node { border-radius:8px; min-width:210px; max-width:250px; padding:0!important; }
+    .drawflow-node[data-node="TrackingNumber"] { border:2px solid #1dace3!important; background:#152233; }
+    .drawflow-node[data-node="IVR"]            { border:2px solid #8b97f8!important; background:#1c1f3a; }
+    .drawflow-node[data-node="Queue"]          { border:2px solid #e07090!important; background:#251525; }
+    .drawflow-node[data-node="SmartRouter"]    { border:2px solid #a259db!important; background:#1e1530; }
+    .drawflow-node[data-node="ReceivingNumber"]{ border:2px solid #5fd18a!important; background:#152520; }
+    .drawflow-node[data-node="Voicemail"]      { border:2px solid #fac6a3!important; background:#251d12; }
+    .drawflow-node[data-node="NoAnswer"]       { border:2px dashed #e24343!important; background:#251515; }
+    .drawflow-node[data-node="EndAction"]      { border:2px solid #5fd18a!important; background:#152520; }
+    .drawflow .output:hover, .drawflow .input:hover { box-shadow:0 0 7px 2px #01BDF6; }
+
+    /* ── Node inner layout ── */
+    .node-inner { padding:10px 12px 6px 12px; }
+    .node-type-badge { font-size:9px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; color:#5a7a9a; margin-bottom:3px; }
+    .drawflow-node-label { font-weight:bold; color:#e8f0ff; font-size:.95rem; display:block; word-break:break-word; line-height:1.3; margin-bottom:4px; cursor:pointer; }
+    .drawflow-node-label:hover { color:#01BDF6; }
+
+    /* config summary badge */
+    .node-config-summary { min-height:16px; margin-bottom:4px; }
+    .config-badge { font-size:.72rem; color:#a0c0e0; background:#1a2a3a; border-radius:3px; padding:2px 5px; display:inline-block; line-height:1.4; }
+    .config-badge.configured { color:#5fd18a; background:#1a2e20; }
+
+    /* output labels */
+    .output-slot-list { display:flex; flex-direction:column; gap:3px; margin-bottom:4px; }
+    .output-slot-row { display:flex; align-items:center; }
+    .output-label-txt { width:100%; font-size:.8rem; background:#1a2639; color:#8ecff7; border:1px solid #2a3d55; border-radius:4px; padding:2px 5px; }
+    .output-label-txt::placeholder { color:#3a5570; }
+    .add-path-btn { background:#3a6a40; color:#a0e8a0; border:1px solid #5fd18a; padding:2px 8px; border-radius:4px; cursor:pointer; font-size:.75rem; font-weight:bold; margin-top:2px; align-self:flex-start; }
+    .add-path-btn:hover { background:#5fd18a; color:#182132; }
+
+    /* notes */
+    .node-notes-field { width:100%; min-height:32px; max-height:70px; font-size:.78rem; border-radius:4px; background:#141e2c; color:#8090a0; padding:3px 6px; border:1px dashed #2a3d55; resize:vertical; outline:none; font-family:inherit; line-height:1.2; margin-top:3px; display:block; }
+    .node-notes-field:focus { border-color:#01BDF6; color:#aac4d8; }
+
+    /* node footer buttons */
+    .node-footer { display:flex; gap:0; border-top:1px solid #1a2a3a; margin-top:6px; }
+    .node-footer-btn { flex:1; background:transparent; color:#5a7a9a; border:none; border-right:1px solid #1a2a3a; padding:5px 4px; cursor:pointer; font-size:.72rem; font-weight:bold; text-align:center; transition:all .15s; }
+    .node-footer-btn:last-child { border-right:none; }
+    .node-footer-btn:hover { background:#1a2a3a; color:#01BDF6; }
+    .node-footer-btn.configured { color:#5fd18a; }
+    .node-footer-btn.end-actions-btn.has-actions { color:#5fd18a; }
+    .node-footer-btn.end-actions-btn.has-actions:hover { background:#1a2e20; }
+
+    /* ── Node context menu ── */
+    #nodeMenu { display:none; position:fixed; z-index:99; background:#1a2535; border:1.5px solid #01BDF6; border-radius:8px; color:#fff; min-width:190px; font-size:.9rem; box-shadow:0 4px 20px #0009; padding:12px; }
+    #nodeMenu label { display:block; margin-bottom:5px; color:#8ecff7; font-size:.8rem; }
+    #nodeMenu select { font-size:.9rem; width:100%; margin-bottom:10px; background:#1a2639; color:#01BDF6; border:1px solid #01BDF6; border-radius:5px; padding:5px; }
+    #nodeMenu .menu-btns { display:flex; gap:8px; }
+    #nodeMenu .menu-btns button { flex:1; padding:5px 8px; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:.82rem; }
+    #nodeMenu .add-btn { background:#01BDF6; color:#182132; }
+    #nodeMenu .cancel-btn { background:#e24343; color:#fff; }
+
+    /* ── Shared modal base ── */
+    .modal-overlay { display:none; position:fixed; z-index:998; inset:0; background:rgba(0,0,0,.5); }
+    .modal-box { position:fixed; z-index:999; left:50%; top:50%; transform:translate(-50%,-50%); background:#1a2535; border:1.5px solid #01BDF6; border-radius:10px; color:#fff; box-shadow:0 6px 40px rgba(0,0,0,.7); }
+    .modal-box h3 { margin:0 0 14px; color:#01BDF6; border-bottom:1px solid #01BDF633; padding-bottom:10px; font-size:1rem; }
+    .modal-header { padding:18px 20px 0; }
+    .modal-body { padding:0 20px; max-height:65vh; overflow-y:auto; }
+    .modal-footer { padding:12px 20px 16px; border-top:1px solid #1a2a3a; display:flex; gap:8px; justify-content:flex-end; }
+    .modal-footer button { padding:7px 16px; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:.85rem; }
+    .btn-save { background:#01BDF6; color:#182132; }
+    .btn-cancel { background:#2a3d55; color:#aaa; }
+    .btn-add { background:#5fd18a; color:#182132; }
+
+    /* ── End Actions Panel ── */
+    #endActionsPanel { width:500px; }
+    .action-row { margin-bottom:10px; padding:10px 12px; background:#111c2a; border-radius:6px; border:1px solid #2a3a50; }
+    .action-type-tabs { display:flex; gap:5px; margin-bottom:8px; flex-wrap:wrap; }
+    .action-type-tabs label { background:#1a2a3a; padding:4px 9px; border-radius:4px; cursor:pointer; font-size:.75rem; border:1px solid #2a3d55; }
+    .action-type-tabs input[type="radio"] { display:none; }
+    .action-type-tabs label:has(input:checked) { background:#01BDF6; color:#182132; border-color:#01BDF6; font-weight:bold; }
+    .action-field { margin-bottom:7px; }
+    .action-field label { display:block; margin-bottom:2px; color:#7090b0; font-size:.75rem; }
+    .action-field input,.action-field select,.action-field textarea { width:100%; padding:5px 7px; border-radius:4px; border:1px solid #2a3a50; background:#111c2a; color:#ddeeff; font-size:.82rem; }
+    .action-field input:focus,.action-field select:focus,.action-field textarea:focus { outline:none; border-color:#01BDF6; }
+    .action-field textarea { font-family:monospace; resize:vertical; }
+    .action-field .checkbox-row { display:flex; align-items:center; gap:7px; margin-top:3px; }
+    .action-field .checkbox-row input[type="checkbox"] { width:auto; }
+    .action-field .checkbox-row label { margin:0; color:#99b; }
+    .remove-action-btn { background:#6a2020; color:#e08080; border:1px solid #903030; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:.72rem; margin-top:4px; }
+    .remove-action-btn:hover { background:#e24343; color:#fff; }
+    .empty-actions { color:#5a7a9a; text-align:center; padding:20px 0; font-size:.85rem; }
+
+    /* ── Node Config Panel ── */
+    #nodeConfigPanel { width:480px; }
+    .config-section { margin-bottom:6px; }
+    .config-field { margin-bottom:8px; }
+    .config-field label { display:block; margin-bottom:3px; color:#7090b0; font-size:.78rem; font-weight:600; }
+    .config-field input,.config-field select,.config-field textarea {
+      width:100%; padding:6px 8px; border-radius:4px; border:1px solid #2a3a50;
+      background:#111c2a; color:#ddeeff; font-size:.85rem;
     }
-    #toolbar img { height: 36px; vertical-align: middle; }
-    #toolbar label { font-size: 13px; color: #90bee5; white-space: nowrap; }
-    #toolbar select {
-      font-size: 14px;
-      background: #25324a;
-      color: #01BDF6;
-      border: 1px solid #01BDF6;
-      border-radius: 6px;
-      padding: 6px 8px;
-      cursor: pointer;
-    }
-    #toolbar button {
-      font-size: 13px;
-      background: #01BDF6;
-      color: #182132;
-      border: none;
-      border-radius: 6px;
-      padding: 7px 14px;
-      font-weight: bold;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    #toolbar button:hover { background: #16c8ff; }
-    .toolbar-hint { font-size: 12px; color: #90bee5; margin-left: auto; text-align: right; }
-    #drawflow-wrap { flex: 1; overflow: hidden; padding: 8px; }
-    #drawflow {
-      background: #25324a;
-      height: 100%;
-      width: 100%;
-      border-radius: 12px;
-      box-shadow: 0 6px 16px #1116;
-      position: relative;
-      overflow: hidden;
-    }
-    .drawflow { min-width: 3000px; min-height: 2000px; }
-    .drawflow-node { border-radius: 7px; }
-    .drawflow-node[data-node="TrackingNumber"] { border: 2.2px solid #1dace3 !important; background: #1a3a5a; }
-    .drawflow-node[data-node="IVR"]            { border: 2.2px solid #8b97f8 !important; background: #232745; }
-    .drawflow-node[data-node="Queue"]          { border: 2.2px solid #ffb4bb !important; background: #3a2030; }
-    .drawflow-node[data-node="SmartRouter"]    { border: 2.2px solid #ce82fc !important; background: #2d1e40; }
-    .drawflow-node[data-node="ReceivingNumber"]{ border: 2.2px solid #5fd18a !important; background: #1a3028; }
-    .drawflow-node[data-node="Voicemail"]      { border: 2.2px solid #fac6a3 !important; background: #3a2a1a; }
-    .drawflow-node[data-node="NoAnswer"]       { border: 2.2px dashed #e24343 !important; background: #3a1a1a; }
-    .drawflow-node[data-node="EndAction"]      { border: 2.2px solid #5fd18a !important; background: #1a3028; }
-    .drawflow-node {
-      min-width: 200px;
-      max-width: 240px;
-      padding: 0 !important;
-    }
-    .node-inner {
-      padding: 10px 12px 8px 12px;
-    }
-    .node-type-badge {
-      font-size: 10px;
-      font-weight: bold;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: #8ecff7;
-      margin-bottom: 4px;
-      opacity: 0.8;
-    }
-    .drawflow-node-label {
-      font-weight: bold;
-      color: #ffffff;
-      font-size: 1rem;
-      outline: none;
-      white-space: normal;
-      word-break: break-word;
-      display: block;
-      line-height: 1.3;
-      margin-bottom: 6px;
-    }
-    .drawflow .output:hover, .drawflow .input:hover { box-shadow: 0 0 7px 2px #01BDF6; }
-    .output-slot-list {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      margin-bottom: 6px;
-    }
-    .output-slot-row {
-      display: flex;
-      align-items: center;
-    }
-    .output-label-txt {
-      width: 100%;
-      font-size: 0.85em;
-      background: #1a2639;
-      color: #8ecff7;
-      border: 1px solid #01BDF6;
-      border-radius: 4px;
-      padding: 3px 6px;
-    }
-    .output-label-txt::placeholder { color: #4a6a8a; }
-    .add-path-btn {
-      background: #5fd18a;
-      color: #182132;
-      border: none;
-      padding: 3px 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.78rem;
-      font-weight: bold;
-      margin-top: 2px;
-      align-self: flex-start;
-    }
-    .add-path-btn:hover { background: #7fe0a0; }
-    .node-notes-field {
-      width: 100%;
-      min-height: 34px;
-      max-height: 80px;
-      font-size: 0.85em;
-      border-radius: 5px;
-      background: #1a2639;
-      color: #aac4d8;
-      padding: 4px 6px;
-      border: 1px dashed #456;
-      resize: vertical;
-      outline: none;
-      font-family: inherit;
-      line-height: 1.2;
-      margin-top: 4px;
-      display: block;
-    }
-    .node-notes-field:focus { border-color: #21bdf6; }
-    .end-actions-wrap {
-      border-top: 1px solid #2a3d55;
-      padding: 6px 12px;
-      background: rgba(0,0,0,0.15);
-      border-radius: 0 0 6px 6px;
-    }
-    .end-actions-btn {
-      background: transparent;
-      color: #01BDF6;
-      border: 1px solid #01BDF6;
-      padding: 3px 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.78rem;
-      font-weight: bold;
-      width: 100%;
-      text-align: left;
-    }
-    .end-actions-btn:hover { background: #01BDF620; }
-    .end-actions-btn.has-actions { color: #5fd18a; border-color: #5fd18a; }
-    .end-actions-btn.has-actions:hover { background: #5fd18a20; }
-    #nodeMenu {
-      display: none;
-      position: fixed;
-      z-index: 99;
-      background: #1e2d42;
-      border: 2px solid #01BDF6;
-      border-radius: 8px;
-      color: #fff;
-      min-width: 200px;
-      font-size: 0.95rem;
-      box-shadow: 0 4px 20px #0008;
-      padding: 12px;
-    }
-    #nodeMenu label { display: block; margin-bottom: 6px; color: #8ecff7; font-size: 0.85rem; }
-    #nodeMenu select { font-size: 0.95rem; width: 100%; margin-bottom: 10px; background: #25324a; color: #01BDF6; border: 1px solid #01BDF6; border-radius: 5px; padding: 5px; }
-    #nodeMenu .menu-btns { display: flex; gap: 8px; }
-    #nodeMenu button { flex: 1; padding: 6px 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-    #nodeMenu .add-btn { background: #01BDF6; color: #182132; }
-    #nodeMenu .cancel-btn { background: #e24343; color: #fff; }
-    #endActionsPanel {
-      display: none;
-      position: fixed;
-      z-index: 999;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      background: #1e2d42;
-      border: 2px solid #01BDF6;
-      border-radius: 10px;
-      padding: 20px;
-      width: 480px;
-      max-height: 85vh;
-      overflow-y: auto;
-      color: #fff;
-      box-shadow: 0 4px 40px rgba(0,0,0,0.6);
-    }
-    #endActionsPanel h3 { margin: 0 0 15px 0; color: #01BDF6; border-bottom: 1px solid #01BDF633; padding-bottom: 10px; }
-    .action-row { margin-bottom: 12px; padding: 12px; background: #152030; border-radius: 6px; border: 1px solid #2a3d55; }
-    .action-type-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-    .action-type-tabs label {
-      background: #1a2a3a;
-      padding: 5px 10px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.82rem;
-      border: 1px solid #2a3d55;
-      transition: all 0.15s;
-    }
-    .action-type-tabs input[type="radio"] { display: none; }
-    .action-type-tabs label:has(input:checked) { background: #01BDF6; color: #182132; border-color: #01BDF6; font-weight: bold; }
-    .action-field { margin-bottom: 8px; }
-    .action-field label { display: block; margin-bottom: 3px; color: #8ecff7; font-size: 0.82rem; }
-    .action-field input, .action-field select, .action-field textarea {
-      width: 100%;
-      padding: 6px 8px;
-      border-radius: 4px;
-      border: 1px solid #2a3d55;
-      background: #1a2639;
-      color: #fff;
-      font-size: 0.88rem;
-    }
-    .action-field input:focus, .action-field select:focus, .action-field textarea:focus {
-      outline: none;
-      border-color: #01BDF6;
-    }
-    .action-field textarea { font-family: monospace; resize: vertical; }
-    .action-field .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-    .action-field .checkbox-row input[type="checkbox"] { width: auto; }
-    .remove-action-btn { background: #e24343; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.78rem; margin-top: 6px; }
-    .panel-footer { margin-top: 16px; display: flex; gap: 10px; justify-content: flex-end; align-items: center; border-top: 1px solid #2a3d55; padding-top: 14px; }
-    .panel-footer button { padding: 8px 18px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 0.9rem; }
-    .add-action-btn-panel { background: #5fd18a; color: #182132; }
-    .save-actions-btn { background: #01BDF6; color: #182132; }
-    .cancel-actions-btn { background: #2a3d55; color: #fff; }
-    .empty-actions { color: #8ecff7; text-align: center; padding: 20px 0; font-size: 0.9rem; }
+    .config-field input:focus,.config-field select:focus,.config-field textarea:focus { outline:none; border-color:#01BDF6; }
+    .config-field textarea { resize:vertical; font-family:inherit; }
+    .config-field .checkbox-row { display:flex; align-items:center; gap:8px; margin-top:3px; }
+    .config-field .checkbox-row input[type="checkbox"] { width:auto; }
+    .config-field .checkbox-row label { margin:0; color:#99aabb; font-size:.82rem; }
+    .config-field .field-hint { font-size:.7rem; color:#4a6a8a; margin-top:2px; }
+    .config-section-title { font-size:.7rem; font-weight:900; text-transform:uppercase; letter-spacing:.08em; color:#4a6a8a; margin:12px 0 6px; border-top:1px solid #1a2a3a; padding-top:8px; }
   </style>
 </head>
 <body>
@@ -255,15 +143,17 @@
     <button onclick="addNodeStandalone()">+ Add Node</button>
     <button onclick="saveFlow()">💾 Save</button>
     <button onclick="loadFlow()">📂 Load</button>
+    <button class="btn-arrange" onclick="autoArrange()">⚡ Auto Arrange</button>
     <input type="file" id="fileInput" style="display:none;" accept="application/json" onchange="handleFile(event)">
-    <span class="toolbar-hint">Click an output port to branch and connect a new node</span>
+    <span class="toolbar-hint">Click an output port to branch · Double-click label to rename</span>
   </div>
   <div id="drawflow-wrap">
     <div id="drawflow"></div>
   </div>
 
+  <!-- Node context menu -->
   <div id="nodeMenu">
-    <label>Add connected node:</label>
+    <label>Connect to new node:</label>
     <select id="nodeMenuSelect"></select>
     <div class="menu-btns">
       <button class="add-btn" id="nodeMenuAddBtn">Add</button>
@@ -271,537 +161,959 @@
     </div>
   </div>
 
-  <div id="endActionsPanel">
-    <h3>⚡ End Actions — Post-Call Automation</h3>
-    <div id="endActionsList"></div>
-    <div class="panel-footer">
-      <button class="add-action-btn-panel" onclick="addEndAction()">+ Add Action</button>
-      <button class="save-actions-btn" onclick="saveEndActions()">Save</button>
-      <button class="cancel-actions-btn" onclick="closeEndActionsPanel()">Cancel</button>
+  <!-- End Actions Panel -->
+  <div id="endActionsPanel" class="modal-box" style="display:none;">
+    <div class="modal-header">
+      <h3 id="endActionsPanelTitle">⚡ End Actions — Post-Call Automation</h3>
+    </div>
+    <div class="modal-body" id="endActionsList"></div>
+    <div class="modal-footer">
+      <button class="btn-add" onclick="addEndAction()">+ Add Action</button>
+      <button class="btn-save" onclick="saveEndActions()">Save</button>
+      <button class="btn-cancel" onclick="cancelEndActions()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Node Configure Panel -->
+  <div id="nodeConfigPanel" class="modal-box" style="display:none;">
+    <div class="modal-header">
+      <h3 id="nodeConfigTitle">⚙ Configure Node</h3>
+    </div>
+    <div class="modal-body" id="nodeConfigFields"></div>
+    <div class="modal-footer">
+      <button class="btn-save" onclick="saveNodeConfig()">Save</button>
+      <button class="btn-cancel" onclick="closeNodeConfig()">Cancel</button>
     </div>
   </div>
 
 <script src="drawflow.min.js"></script>
 <script>
-  const labelMap = {
-    TrackingNumber: "Tracking Number",
-    IVR: "IVR Menu",
-    Queue: "Queue",
-    SmartRouter: "Smart Router",
-    ReceivingNumber: "Receiving Number",
-    Voicemail: "Voicemail",
-    NoAnswer: "No Answer Branch",
-    EndAction: "End Action"
+// ─────────────────────────────────────────────
+// Constants & schema
+// ─────────────────────────────────────────────
+const LABEL_MAP = {
+  TrackingNumber:'Tracking Number', IVR:'IVR Menu', Queue:'Queue',
+  SmartRouter:'Smart Router', ReceivingNumber:'Receiving Number',
+  Voicemail:'Voicemail', NoAnswer:'No Answer Branch', EndAction:'End Action'
+};
+
+const NODE_TYPES_LIST = [
+  {value:'IVR',label:'IVR Menu'}, {value:'Queue',label:'Queue'},
+  {value:'SmartRouter',label:'Smart Router'}, {value:'ReceivingNumber',label:'Receiving Number'},
+  {value:'Voicemail',label:'Voicemail'}, {value:'NoAnswer',label:'No Answer Branch'},
+  {value:'EndAction',label:'End Action'}
+];
+
+// Per-node-type configuration schema (fields for the Configure panel)
+// Designed as a solutions-architect scoping tool capturing CTM config requirements
+const NODE_CONFIG_SCHEMA = {
+  TrackingNumber: {
+    title: '📞 Tracking Number — Configuration Scope',
+    sections: [
+      { title: 'Number Details', fields: [
+        { key:'phoneNumber',    label:'Phone Number',        type:'text',   ph:'+1 (555) 000-0000' },
+        { key:'campaignSource', label:'Campaign / Source',   type:'text',   ph:'e.g. Google Paid Search' },
+        { key:'numberType',     label:'Number Type',         type:'select',
+          opts:[{v:'direct',l:'Direct Number'},{v:'pool',l:'Number Pool'},{v:'ported',l:'Ported / Bring Your Own'}] },
+      ]},
+      { title: 'Call Settings', fields: [
+        { key:'recordingEnabled',  label:'Call Recording',         type:'check', default:true },
+        { key:'whisperEnabled',    label:'Agent Whisper Message',  type:'check', default:false },
+        { key:'whisperMessage',    label:'Whisper Text',           type:'text',  ph:'Incoming call from Google Ads', showIf:'whisperEnabled' },
+        { key:'transcriptionEnabled', label:'Live Call Transcription', type:'check', default:false },
+      ]}
+    ]
+  },
+
+  IVR: {
+    title: '🎛 IVR Menu — Configuration Scope',
+    sections: [
+      { title: 'Greeting', fields: [
+        { key:'greetingType',  label:'Greeting Type', type:'select',
+          opts:[{v:'tts',l:'Text-to-Speech'},{v:'audio',l:'Audio File URL'},{v:'none',l:'No Greeting (silent)'}] },
+        { key:'greetingText',  label:'Greeting Script (TTS)', type:'textarea', ph:'Thank you for calling. For Sales press 1, for Support press 2...', showIf:'greetingType', showVal:'tts' },
+        { key:'audioUrl',      label:'Audio File URL', type:'text', ph:'https://cdn.example.com/ivr-greeting.mp3', showIf:'greetingType', showVal:'audio' },
+        { key:'voice',         label:'TTS Voice', type:'select', showIf:'greetingType', showVal:'tts',
+          opts:[{v:'alice',l:'Alice (female, en-US)'},{v:'man',l:'Man (male, en-US)'},{v:'woman',l:'Woman (female, en-US)'}] },
+      ]},
+      { title: 'Keypress Behavior', fields: [
+        { key:'interruptible',     label:'Allow keypress during greeting (interruptible)', type:'check', default:true },
+        { key:'timeoutSeconds',    label:'Keypress timeout (seconds)',     type:'number', ph:'5',  default:5 },
+        { key:'maxRetries',        label:'Max retries before fallback',    type:'number', ph:'3',  default:3 },
+        { key:'onTimeout',         label:'On timeout action', type:'select',
+          opts:[{v:'replay',l:'Replay Menu'},{v:'hangup',l:'Hangup'},{v:'default_route',l:'Route to Default Destination'}] },
+        { key:'onInvalid',         label:'On invalid key action', type:'select',
+          opts:[{v:'replay',l:'Replay Menu'},{v:'hangup',l:'Hangup'},{v:'default_route',l:'Route to Default Destination'}] },
+      ]},
+      { title: 'Scope Notes', fields: [
+        { key:'numKeypresses',     label:'Expected number of keypress options', type:'number', ph:'3' },
+        { key:'nestedIVRs',        label:'Nested IVR menus required',           type:'check', default:false },
+        { key:'multiLanguage',     label:'Multi-language support required',      type:'check', default:false },
+        { key:'languageNotes',     label:'Languages needed', type:'text', ph:'English, Spanish', showIf:'multiLanguage' },
+      ]}
+    ]
+  },
+
+  Queue: {
+    title: '📋 Call Queue — Configuration Scope',
+    sections: [
+      { title: 'Routing Strategy', fields: [
+        { key:'ringStrategy', label:'Ring Strategy', type:'select',
+          opts:[{v:'round_robin',l:'Round Robin'},{v:'simultaneous',l:'Simultaneous (all agents ring)'},{v:'priority',l:'Priority Order'},{v:'skills',l:'Skills-Based Routing'}] },
+        { key:'ringTimeoutPerAgent', label:'Ring timeout per agent (sec)', type:'number', ph:'20', default:20 },
+        { key:'maxWaitSeconds',      label:'Max queue wait time (sec)',     type:'number', ph:'120', default:120 },
+      ]},
+      { title: 'Receiving Numbers', fields: [
+        { key:'receivingNumbers', label:'Agent / Receiving Numbers (one per line)', type:'textarea', ph:'+1 (555) 100-0001\n+1 (555) 100-0002' },
+        { key:'agentCount',       label:'Approx. number of agents/lines',           type:'number', ph:'3' },
+      ]},
+      { title: 'Caller Experience', fields: [
+        { key:'holdMusic',     label:'Hold Music', type:'select',
+          opts:[{v:'default',l:'Default Hold Music'},{v:'custom',l:'Custom Audio URL'},{v:'none',l:'Silence'}] },
+        { key:'holdMusicUrl',  label:'Hold Music URL', type:'text', ph:'https://...', showIf:'holdMusic', showVal:'custom' },
+        { key:'announcements', label:'Queue Announcements', type:'select',
+          opts:[{v:'none',l:'None'},{v:'position',l:'Caller Position in Queue'},{v:'wait_time',l:'Estimated Wait Time'}] },
+        { key:'announcementFreq', label:'Announcement frequency (sec)', type:'number', ph:'60', default:60,
+          showIf:'announcements', showVal:'position' },
+        { key:'callbackEnabled', label:'Offer callback option to callers', type:'check', default:false },
+      ]},
+      { title: 'Business Hours & Overflow', fields: [
+        { key:'businessHours', label:'Business Hours', type:'select',
+          opts:[{v:'always',l:'Always Open (24/7)'},{v:'schedule',l:'Use a Schedule'}] },
+        { key:'scheduleName',  label:'Schedule name', type:'text', ph:'Standard Business Hours', showIf:'businessHours', showVal:'schedule' },
+        { key:'afterHoursRoute', label:'After-hours routing', type:'select',
+          opts:[{v:'voicemail',l:'Route to Voicemail'},{v:'message',l:'Play Message & Hangup'},{v:'queue',l:'Secondary Queue'},{v:'number',l:'External Number'}] },
+      ]}
+    ]
+  },
+
+  SmartRouter: {
+    title: '🧠 Smart Router — Configuration Scope',
+    sections: [
+      { title: 'Routing Logic', fields: [
+        { key:'routingStrategy', label:'Primary Routing Strategy', type:'select',
+          opts:[
+            {v:'geographic',  l:'Geographic (by caller location / area code)'},
+            {v:'time_based',  l:'Time-Based (schedule / business hours)'},
+            {v:'round_robin', l:'Round Robin'},
+            {v:'tag_based',   l:'Tag-Based (caller attributes / history)'},
+            {v:'priority',    l:'Priority Order'},
+            {v:'caller_id',   l:'Caller ID Match'},
+            {v:'combined',    l:'Combined (multiple condition types)'},
+          ] },
+        { key:'evaluationOrder', label:'Rule Evaluation', type:'select',
+          opts:[{v:'first_match',l:'First matching rule wins'},{v:'weighted',l:'Weighted / scored match'}] },
+        { key:'conditionCount',  label:'Estimated number of routing conditions', type:'number', ph:'3' },
+      ]},
+      { title: 'Routing Conditions Detail', fields: [
+        { key:'conditionNotes', label:'Describe routing conditions', type:'textarea',
+          ph:'e.g. Route area codes 212/646/718 → NY Office\nWeekends → Voicemail\nVIP tag → Priority Queue' },
+        { key:'fallbackRoute',  label:'Default / fallback destination', type:'text', ph:'Main Queue or receiving number' },
+      ]},
+      { title: 'Data & Integration Requirements', fields: [
+        { key:'requiresCRM',    label:'Requires CRM data for routing decisions', type:'check', default:false },
+        { key:'crmNotes',       label:'CRM / data source details', type:'text', ph:'Salesforce, HubSpot...', showIf:'requiresCRM' },
+        { key:'requiresGeo',    label:'Requires geographic lookup (lat/long or area code)', type:'check', default:false },
+      ]}
+    ]
+  },
+
+  NoAnswer: {
+    title: '⚠️ No Answer Branch — Configuration Scope',
+    sections: [
+      { title: 'No-Answer Handling', fields: [
+        { key:'maxRings',      label:'Ring timeout before no-answer (sec)', type:'number', ph:'30', default:30 },
+        { key:'noAnswerAction', label:'No-answer destination', type:'select',
+          opts:[{v:'voicemail',l:'Voicemail'},{v:'transfer',l:'Transfer to Number'},{v:'queue',l:'Overflow Queue'},{v:'message',l:'Play Message & Hangup'},{v:'hangup',l:'Hangup'}] },
+        { key:'forwardTo',     label:'Transfer-to Number', type:'text', ph:'+1 (555) 000-0000', showIf:'noAnswerAction', showVal:'transfer' },
+      ]},
+      { title: 'Notifications', fields: [
+        { key:'missedCallAlert', label:'Send missed call notification', type:'check', default:false },
+        { key:'alertEmail',      label:'Notification email address(es)', type:'text', ph:'team@company.com', showIf:'missedCallAlert' },
+        { key:'smsAlert',        label:'Send missed call SMS alert', type:'check', default:false },
+        { key:'smsTo',           label:'SMS alert number', type:'text', ph:'+1 (555) 000-0000', showIf:'smsAlert' },
+      ]}
+    ]
+  },
+
+  Voicemail: {
+    title: '📬 Voicemail — Configuration Scope',
+    sections: [
+      { title: 'Greeting', fields: [
+        { key:'greetingType', label:'Voicemail Greeting', type:'select',
+          opts:[{v:'default',l:'Default System Greeting'},{v:'tts',l:'Custom Text-to-Speech'},{v:'audio',l:'Custom Audio File URL'}] },
+        { key:'greetingText',     label:'Greeting Script (TTS)',  type:'textarea', ph:'You have reached...', showIf:'greetingType', showVal:'tts' },
+        { key:'greetingAudioUrl', label:'Greeting Audio URL',     type:'text',     ph:'https://...', showIf:'greetingType', showVal:'audio' },
+        { key:'maxDuration',      label:'Max recording duration (sec)', type:'number', ph:'60', default:60 },
+      ]},
+      { title: 'Delivery & Notifications', fields: [
+        { key:'emailTranscription',  label:'Email voicemail recording + transcription', type:'check', default:false },
+        { key:'notificationEmail',   label:'Delivery email address(es)', type:'text', ph:'team@company.com', showIf:'emailTranscription' },
+        { key:'smsNotification',     label:'SMS notification on new voicemail', type:'check', default:false },
+        { key:'smsNumber',           label:'SMS notification number', type:'text', ph:'+1 (555) 000-0000', showIf:'smsNotification' },
+      ]}
+    ]
+  },
+
+  ReceivingNumber: {
+    title: '🤝 Receiving Number — Configuration Scope',
+    sections: [
+      { title: 'Destination', fields: [
+        { key:'phoneNumber',  label:'Receiving Phone Number', type:'text', ph:'+1 (555) 000-0000' },
+        { key:'contactName',  label:'Agent / Team Name',      type:'text', ph:'Sales Team East' },
+        { key:'ringTimeout',  label:'Ring timeout (seconds)', type:'number', ph:'20', default:20 },
+      ]},
+      { title: 'Agent Experience', fields: [
+        { key:'callScreening',  label:'Call screening (agent must press key to accept)', type:'check', default:false },
+        { key:'callWhisper',    label:'Call whisper message',     type:'text',  ph:'Incoming sales call from Google campaign' },
+        { key:'simultaneousDial', label:'Simultaneous dial additional numbers', type:'text', ph:'+1 (555) 100-0002, +1 (555) 100-0003' },
+        { key:'callerId',       label:'Caller ID override', type:'select',
+          opts:[{v:'caller',l:"Show caller's number"},{v:'tracking',l:'Show tracking number'},{v:'custom',l:'Custom number'}] },
+        { key:'customCallerId', label:'Custom caller ID number', type:'text', ph:'+1 (555) 000-0000', showIf:'callerId', showVal:'custom' },
+      ]}
+    ]
+  },
+
+  EndAction: { title:'End Action', sections:[] }  // handled by its own panel
+};
+
+// Generates a 1-line summary for a node's configured data
+function getConfigSummary(type, config) {
+  if (!config || Object.keys(config).length === 0) return null;
+  const c = config;
+  const strategyLabels = {
+    round_robin:'Round Robin', simultaneous:'Simultaneous', priority:'Priority',
+    skills:'Skills-Based', geographic:'Geographic', time_based:'Time-Based',
+    tag_based:'Tag-Based', caller_id:'Caller ID', combined:'Combined'
   };
-
-  const NODE_TYPES = [
-    { value: "IVR", label: "IVR Menu" },
-    { value: "Queue", label: "Queue" },
-    { value: "SmartRouter", label: "Smart Router" },
-    { value: "ReceivingNumber", label: "Receiving Number" },
-    { value: "Voicemail", label: "Voicemail" },
-    { value: "NoAnswer", label: "No Answer Branch" },
-    { value: "EndAction", label: "End Action" }
-  ];
-
-  const editor = new Drawflow(document.getElementById('drawflow'));
-  editor.reroute = true;
-  editor.start();
-
-  // Keyboard deletion
-  document.addEventListener('keydown', function(e) {
-    if ((e.key === "Delete" || e.key === "Backspace") &&
-        document.activeElement.tagName !== 'INPUT' &&
-        document.activeElement.tagName !== 'TEXTAREA') {
-      const selected = editor.getSelectedNodes ? editor.getSelectedNodes() : [];
-      if (selected && selected.length > 0) {
-        selected.forEach(id => editor.removeNodeId(id));
-      }
+  switch (type) {
+    case 'TrackingNumber': {
+      const parts = [];
+      if (c.phoneNumber) parts.push(c.phoneNumber);
+      if (c.numberType) parts.push({direct:'Direct',pool:'Pool',ported:'Ported'}[c.numberType]||'');
+      if (c.recordingEnabled) parts.push('REC');
+      return parts.filter(Boolean).join(' · ') || null;
     }
-  });
-
-  let nodeCount = {
-    TrackingNumber:1, IVR:1, Queue:1, SmartRouter:1,
-    ReceivingNumber:1, Voicemail:1, NoAnswer:1, EndAction:1
-  };
-
-  function buildNodeHTML(type, label, outputLabels, notesValue) {
-    let outputInputsHTML = '';
-    if (type === 'IVR' || type === 'SmartRouter') {
-      const labels = outputLabels || [];
-      const placeholder = type === 'IVR' ? 'Keypress' : 'Condition';
-      const addBtn = type === 'IVR'
-        ? `<button class="add-path-btn" onclick="event.stopPropagation();window.addIVROutput(this)">+ Add Path</button>`
-        : '';
-      outputInputsHTML = `
-        <div class="output-slot-list">
-          ${labels.map((v, i) => `
-            <div class="output-slot-row">
-              <input type="text" class="output-label-txt"
-                value="${(v||'').replace(/"/g,'&quot;')}"
-                oninput="window.updateOutputLabel(this,${i},this.value)"
-                placeholder="${placeholder} ${i+1}">
-            </div>`).join('')}
-          ${addBtn}
-        </div>`;
+    case 'IVR': {
+      const parts = [];
+      if (c.greetingType) parts.push({tts:'TTS',audio:'Audio',none:'Silent'}[c.greetingType]||'');
+      if (c.numKeypresses) parts.push(c.numKeypresses + ' options');
+      if (c.timeoutSeconds) parts.push(c.timeoutSeconds + 's timeout');
+      if (c.multiLanguage) parts.push('Multi-lang');
+      return parts.filter(Boolean).join(' · ') || null;
     }
-    const notes = (notesValue || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    return `<div class="node-inner" data-node-type="${type}">
-      <div class="node-type-badge">${labelMap[type] || type}</div>
-      <span class="drawflow-node-label" ondblclick="window.editLabel(this)">${label}</span>
-      ${outputInputsHTML}
-      <textarea class="node-notes-field" placeholder="Notes..." rows="2"
-        oninput="window.saveNodeNotes(this)">${notes}</textarea>
-    </div>
-    <div class="end-actions-wrap">
-      <button class="end-actions-btn" onclick="event.stopPropagation();window.showEndActionsPanel(parseInt(this.closest('.drawflow-node').id.replace('node-','')))">⚡ End Actions</button>
+    case 'Queue': {
+      const parts = [];
+      if (c.ringStrategy) parts.push(strategyLabels[c.ringStrategy]||c.ringStrategy);
+      if (c.agentCount) parts.push(c.agentCount + ' agents');
+      if (c.maxWaitSeconds) parts.push(c.maxWaitSeconds + 's max');
+      if (c.callbackEnabled) parts.push('Callback');
+      if (c.businessHours === 'schedule' && c.scheduleName) parts.push(c.scheduleName);
+      return parts.filter(Boolean).join(' · ') || null;
+    }
+    case 'SmartRouter': {
+      const parts = [];
+      if (c.routingStrategy) parts.push(strategyLabels[c.routingStrategy]||c.routingStrategy);
+      if (c.conditionCount) parts.push(c.conditionCount + ' rules');
+      if (c.fallbackRoute) parts.push('Fallback: ' + c.fallbackRoute);
+      return parts.filter(Boolean).join(' · ') || null;
+    }
+    case 'NoAnswer': {
+      const actionLabel = {voicemail:'→ Voicemail',transfer:'→ Transfer',queue:'→ Queue',message:'→ Message',hangup:'Hangup'}[c.noAnswerAction];
+      const parts = [];
+      if (actionLabel) parts.push(actionLabel);
+      if (c.maxRings) parts.push(c.maxRings + 's rings');
+      if (c.missedCallAlert) parts.push('Alert ✓');
+      return parts.filter(Boolean).join(' · ') || null;
+    }
+    case 'Voicemail': {
+      const parts = [];
+      if (c.greetingType) parts.push({default:'Default',tts:'TTS',audio:'Audio'}[c.greetingType]||'');
+      if (c.emailTranscription) parts.push('Email ✓');
+      if (c.maxDuration) parts.push(c.maxDuration + 's max');
+      return parts.filter(Boolean).join(' · ') || null;
+    }
+    case 'ReceivingNumber': {
+      const parts = [];
+      if (c.contactName) parts.push(c.contactName);
+      if (c.phoneNumber) parts.push(c.phoneNumber);
+      if (c.callScreening) parts.push('Screened');
+      return parts.filter(Boolean).join(' · ') || null;
+    }
+    default: return null;
+  }
+}
+
+// ─────────────────────────────────────────────
+// Drawflow init
+// ─────────────────────────────────────────────
+const editor = new Drawflow(document.getElementById('drawflow'));
+editor.reroute = true;
+editor.start();
+
+document.addEventListener('keydown', function(e) {
+  if ((e.key === 'Delete' || e.key === 'Backspace') &&
+      document.activeElement.tagName !== 'INPUT' &&
+      document.activeElement.tagName !== 'TEXTAREA') {
+    const sel = editor.getSelectedNodes ? editor.getSelectedNodes() : [];
+    sel.forEach(id => editor.removeNodeId(id));
+  }
+});
+
+let nodeCount = { TrackingNumber:1,IVR:1,Queue:1,SmartRouter:1,ReceivingNumber:1,Voicemail:1,NoAnswer:1,EndAction:1 };
+
+// ─────────────────────────────────────────────
+// Node HTML builder
+// ─────────────────────────────────────────────
+function buildNodeHTML(type, label, outputLabels, notesValue, configData, endActions) {
+  let outputInputsHTML = '';
+  if (type === 'IVR' || type === 'SmartRouter') {
+    const labels = outputLabels || [];
+    const ph = type === 'IVR' ? 'Keypress' : 'Condition';
+    const addBtn = type === 'IVR'
+      ? `<button class="add-path-btn" onclick="event.stopPropagation();window.addIVROutput(this)">+ Add Path</button>`
+      : '';
+    outputInputsHTML = `<div class="output-slot-list">
+      ${labels.map((v,i) => `<div class="output-slot-row">
+        <input type="text" class="output-label-txt" value="${(v||'').replace(/"/g,'&quot;')}"
+          oninput="window.updateOutputLabel(this,${i},this.value)"
+          placeholder="${ph} ${i+1}">
+      </div>`).join('')}
+      ${addBtn}
     </div>`;
   }
 
-  function addNodeStandalone() {
-    const type = document.getElementById('nodeType').value;
-    addNodeWithDepth(type, null, null);
+  const summary = getConfigSummary(type, configData);
+  const summaryHTML = summary
+    ? `<div class="node-config-summary"><span class="config-badge configured">⚙ ${summary}</span></div>`
+    : `<div class="node-config-summary"></div>`;
+
+  const notes = (notesValue||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // End Actions button label
+  const actions = endActions || [];
+  let eaBtnText = '⚡ End Actions';
+  let eaBtnClass = 'node-footer-btn end-actions-btn';
+  if (actions.length > 0) {
+    const END_TYPE_ICON = { trigger:'⚡', webhook:'🌐', google_conversion:'📊', email_notification:'📧' };
+    const icons = [...new Set(actions.map(a => END_TYPE_ICON[a.type] || '⚡'))];
+    eaBtnText = icons.join('') + ' ' + (actions.length > 1 ? actions.length + ' actions ✓' : (actions[0]?.type||'action') + ' ✓');
+    eaBtnClass += ' has-actions';
   }
 
-  function addNodeWithDepth(type, parentId, fromOutputIdx) {
-    const defaultName = labelMap[type] + ' ' + nodeCount[type]++;
-    let outputs = 1, inputs = 1;
-    if (type === 'TrackingNumber') { outputs = 1; inputs = 0; }
-    else if (type === 'IVR')       { outputs = 3; inputs = 1; }
-    else if (type === 'SmartRouter'){ outputs = 3; inputs = 1; }
-    else if (type === 'NoAnswer')  { outputs = 1; inputs = 1; }
-    else if (type === 'EndAction') { outputs = 0; inputs = 1; }
+  const configureBtn = type !== 'EndAction'
+    ? `<button class="node-footer-btn" onclick="event.stopPropagation();window.openNodeConfig(parseInt(this.closest('.drawflow-node').id.replace('node-','')))">⚙ Configure</button>`
+    : '';
 
-    const outputLabels = Array(outputs).fill('');
-    let x = 200, y = 120;
-    let depth = 1;
+  return `<div class="node-inner">
+    <div class="node-type-badge">${LABEL_MAP[type]||type}</div>
+    <span class="drawflow-node-label" onclick="event.stopPropagation();window.editLabel(this)">${label}</span>
+    ${summaryHTML}
+    ${outputInputsHTML}
+    <textarea class="node-notes-field" placeholder="Notes / scope details..." rows="2"
+      oninput="window.saveNodeNotes(this)">${notes}</textarea>
+  </div>
+  <div class="node-footer">
+    ${configureBtn}
+    <button class="${eaBtnClass}"
+      onclick="event.stopPropagation();window.showEndActionsPanel(parseInt(this.closest('.drawflow-node').id.replace('node-','')))">
+      ${eaBtnText}
+    </button>
+  </div>`;
+}
 
-    if (parentId !== null) {
-      try {
-        const parentNode = editor.getNodeFromId(parentId);
-        depth = (parentNode.data.depth || 1) + 1;
-        x = parentNode.pos_x + 260;
-        y = parentNode.pos_y + (fromOutputIdx - 1) * 80;
-      } catch { depth = 2; }
-    }
+// ─────────────────────────────────────────────
+// Add node
+// ─────────────────────────────────────────────
+function addNodeStandalone() {
+  addNodeWithDepth(document.getElementById('nodeType').value, null, null);
+}
 
-    const data = { type: String(type), label: String(defaultName), depth, outputLabels: [...outputLabels] };
-    const html = buildNodeHTML(type, defaultName, outputLabels, '');
+function addNodeWithDepth(type, parentId, fromOutputIdx) {
+  const label = LABEL_MAP[type] + ' ' + nodeCount[type]++;
+  let outputs = 1, inputs = 1;
+  if (type === 'TrackingNumber') { outputs=1; inputs=0; }
+  else if (type === 'IVR')       { outputs=3; inputs=1; }
+  else if (type === 'SmartRouter'){ outputs=3; inputs=1; }
+  else if (type === 'NoAnswer')  { outputs=1; inputs=1; }
+  else if (type === 'EndAction') { outputs=0; inputs=1; }
 
-    const newNodeId = editor.addNode(
-      String(type), inputs, outputs, x, y,
-      '', data, html
-    );
-
-    // Set node data-node attribute for CSS targeting
-    setTimeout(function() {
-      const el = document.getElementById('node-' + newNodeId);
-      if (el) el.setAttribute('data-node', type);
-    }, 10);
-
-    if (parentId !== null && fromOutputIdx) {
-      editor.addConnection(parentId, newNodeId, 'output_' + fromOutputIdx, 'input_1');
-    }
-
-    return newNodeId;
-  }
-
-  // Save notes directly on the node data via DOM traversal
-  window.saveNodeNotes = function(textarea) {
+  const outputLabels = Array(outputs).fill('');
+  let x=200, y=120, depth=1;
+  if (parentId !== null) {
     try {
-      const nodeDiv = textarea.closest('.drawflow-node');
-      const nodeId = parseInt(nodeDiv.id.replace("node-",""));
-      const node = editor.getNodeFromId(nodeId);
-      node.data.notesValue = textarea.value;
-      editor.updateNodeDataFromId(nodeId, node.data);
-    } catch {}
-  };
+      const p = editor.getNodeFromId(parentId);
+      depth = (p.data.depth||1)+1;
+      x = p.pos_x + 280;
+      y = p.pos_y + ((fromOutputIdx||1)-1)*80;
+    } catch { depth=2; }
+  }
 
-  // Update output label — just save to data, no re-render needed
-  window.updateOutputLabel = function(inputElem, idx, value) {
+  const data = { type:String(type), label, depth, outputLabels:[...outputLabels], config:{}, endActions:[] };
+  const html = buildNodeHTML(type, label, outputLabels, '', {}, []);
+  const newId = editor.addNode(String(type), inputs, outputs, x, y, '', data, html);
+
+  setTimeout(()=>{
+    const el = document.getElementById('node-'+newId);
+    if (el) el.setAttribute('data-node', type);
+  }, 10);
+
+  if (parentId !== null && fromOutputIdx) {
+    editor.addConnection(parentId, newId, 'output_'+fromOutputIdx, 'input_1');
+  }
+  return newId;
+}
+
+// ─────────────────────────────────────────────
+// Inline field handlers
+// ─────────────────────────────────────────────
+window.saveNodeNotes = function(ta) {
+  try {
+    const id = parseInt(ta.closest('.drawflow-node').id.replace('node-',''));
+    const n = editor.getNodeFromId(id);
+    n.data.notesValue = ta.value;
+    editor.updateNodeDataFromId(id, n.data);
+  } catch {}
+};
+
+window.updateOutputLabel = function(inp, idx, value) {
+  try {
+    const id = parseInt(inp.closest('.drawflow-node').id.replace('node-',''));
+    const n = editor.getNodeFromId(id);
+    if (!n.data.outputLabels) n.data.outputLabels = [];
+    n.data.outputLabels[idx] = value;
+    editor.updateNodeDataFromId(id, n.data);
+  } catch {}
+};
+
+window.addIVROutput = function(btn) {
+  const nodeDiv = btn.closest('.drawflow-node');
+  const nodeId = parseInt(nodeDiv.id.replace('node-',''));
+  const node = editor.getNodeFromId(nodeId);
+  if (!node || !node.data) return;
+  editor.addNodeOutput(nodeId);
+  if (!node.data.outputLabels) node.data.outputLabels = [];
+  const newIdx = node.data.outputLabels.length;
+  node.data.outputLabels.push('');
+  editor.updateNodeDataFromId(nodeId, node.data);
+  const slotList = nodeDiv.querySelector('.output-slot-list');
+  const row = document.createElement('div');
+  row.className = 'output-slot-row';
+  row.innerHTML = `<input type="text" class="output-label-txt" value=""
+    oninput="window.updateOutputLabel(this,${newIdx},this.value)"
+    placeholder="Keypress ${newIdx+1}">`;
+  slotList.insertBefore(row, btn);
+  editor.updateConnectionNodes('node-'+nodeId);
+};
+
+window.editLabel = function(span) {
+  const old = span.textContent;
+  const inp = document.createElement('input');
+  inp.type='text'; inp.value=old; inp.className='drawflow-node-label'; inp.style.width='100%';
+  function finish() {
+    const val = inp.value.trim()||old;
+    span.textContent = val;
+    span.style.display = '';
+    inp.remove();
     try {
-      const nodeDiv = inputElem.closest('.drawflow-node');
-      const nodeId = parseInt(nodeDiv.id.replace("node-",""));
-      const node = editor.getNodeFromId(nodeId);
-      if (!node.data.outputLabels) node.data.outputLabels = [];
-      node.data.outputLabels[idx] = value;
-      editor.updateNodeDataFromId(nodeId, node.data);
+      const id = parseInt(span.closest('.drawflow-node').id.replace('node-',''));
+      const n = editor.getNodeFromId(id);
+      n.data.label = val;
+      editor.updateNodeDataFromId(id, n.data);
     } catch {}
-  };
-
-  // Add a new IVR output port + input row
-  window.addIVROutput = function(btn) {
-    const nodeDiv = btn.closest('.drawflow-node');
-    const nodeId = parseInt(nodeDiv.id.replace("node-",""));
-    const node = editor.getNodeFromId(nodeId);
-    if (!node || !node.data) return;
-
-    // Add actual output port in Drawflow
-    editor.addNodeOutput(nodeId);
-
-    // Track in data
-    if (!node.data.outputLabels) node.data.outputLabels = [];
-    const newIdx = node.data.outputLabels.length;
-    node.data.outputLabels.push('');
-    editor.updateNodeDataFromId(nodeId, node.data);
-
-    // Add new row to DOM before the button
-    const slotList = nodeDiv.querySelector('.output-slot-list');
-    const newRow = document.createElement('div');
-    newRow.className = 'output-slot-row';
-    newRow.innerHTML = `<input type="text" class="output-label-txt" value=""
-      oninput="window.updateOutputLabel(this,${newIdx},this.value)"
-      placeholder="Keypress ${newIdx + 1}">`;
-    slotList.insertBefore(newRow, btn);
-
-    // Update connection lines
-    editor.updateConnectionNodes('node-' + nodeId);
-  };
-
-  // Double-click label to edit inline
-  window.editLabel = function(spanElem) {
-    const old = spanElem.textContent;
-    const inp = document.createElement('input');
-    inp.type = 'text';
-    inp.value = old;
-    inp.className = 'drawflow-node-label';
-    inp.style.width = '100%';
-    function finish() {
-      const newVal = inp.value.trim() || old;
-      spanElem.textContent = newVal;
-      spanElem.style.display = '';
-      inp.remove();
-      try {
-        const nodeDiv = spanElem.closest('.drawflow-node');
-        const nodeId = parseInt(nodeDiv.id.replace("node-",""));
-        const node = editor.getNodeFromId(nodeId);
-        node.data.label = newVal;
-        editor.updateNodeDataFromId(nodeId, node.data);
-      } catch {}
-    }
-    inp.onblur = finish;
-    inp.onkeydown = function(e) { if (e.key === 'Enter') { e.preventDefault(); finish(); } };
-    spanElem.parentNode.insertBefore(inp, spanElem);
-    spanElem.style.display = 'none';
-    inp.focus();
-    inp.select();
-  };
-
-  // --- Node context menu (click output port to branch) ---
-  function showNodeMenu(x, y, parentId, outIndex) {
-    const menu = document.getElementById('nodeMenu');
-    const sel = document.getElementById('nodeMenuSelect');
-    sel.innerHTML = NODE_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('');
-    menu.style.left = (x + 8) + 'px';
-    menu.style.top = (y - 10) + 'px';
-    menu.style.display = 'block';
-    menu._parentId = parentId;
-    menu._outIndex = outIndex;
-    sel.focus();
   }
+  inp.onblur = finish;
+  inp.onkeydown = e => { if(e.key==='Enter'){e.preventDefault();finish();} };
+  span.parentNode.insertBefore(inp, span);
+  span.style.display = 'none';
+  inp.focus(); inp.select();
+};
 
-  function hideNodeMenu() {
-    const menu = document.getElementById('nodeMenu');
-    menu.style.display = 'none';
-    menu._parentId = undefined;
-    menu._outIndex = undefined;
-  }
+// ─────────────────────────────────────────────
+// Node Configure panel
+// ─────────────────────────────────────────────
+let currentConfigNodeId = null;
+let configSnapshot = null;
 
-  document.getElementById('nodeMenuAddBtn').onclick = function() {
-    const menu = document.getElementById('nodeMenu');
-    const type = document.getElementById('nodeMenuSelect').value;
-    if (menu._parentId && type) {
-      addNodeWithDepth(type, Number(menu._parentId), Number(menu._outIndex));
-    }
-    hideNodeMenu();
-  };
-  document.getElementById('nodeMenuCancelBtn').onclick = hideNodeMenu;
+window.openNodeConfig = function(nodeId) {
+  const node = editor.getNodeFromId(nodeId);
+  if (!node) return;
+  const type = node.data.type;
+  const schema = NODE_CONFIG_SCHEMA[type];
+  if (!schema || schema.sections.length === 0) return;
+  currentConfigNodeId = nodeId;
+  configSnapshot = JSON.parse(JSON.stringify(node.data.config||{}));
+  document.getElementById('nodeConfigTitle').textContent = schema.title;
+  renderConfigFields(type, node.data.config||{});
+  document.getElementById('nodeConfigPanel').style.display = 'block';
+};
 
-  editor.precanvas.addEventListener('click', function(e) {
-    if (e.target.classList.contains('output')) {
-      const parentNodeDiv = e.target.closest('.drawflow-node');
-      const parentId = parseInt(parentNodeDiv.id.replace('node-', ''));
-      const outputs = Array.from(parentNodeDiv.querySelectorAll('.output'));
-      const outIndex = outputs.indexOf(e.target) + 1;
-      const rect = e.target.getBoundingClientRect();
-      showNodeMenu(rect.right, rect.top, parentId, outIndex);
-      e.stopPropagation();
-    }
-  });
-
-  document.body.addEventListener('mousedown', function(e) {
-    const menu = document.getElementById('nodeMenu');
-    if (menu.style.display === 'block' && !menu.contains(e.target)) hideNodeMenu();
-  });
-
-  // --- Grid snap ---
-  function snapAllNodesToGrid() {
-    const grid = 32;
-    const data = editor.drawflow.drawflow.Home.data;
-    Object.values(data).forEach(function(n) {
-      const node = document.getElementById('node-' + n.id);
-      if (node) {
-        const l = Math.round(parseInt(node.style.left) / grid) * grid;
-        const t = Math.round(parseInt(node.style.top) / grid) * grid;
-        node.style.left = l + 'px';
-        node.style.top = t + 'px';
-        n.pos_x = l;
-        n.pos_y = t;
+function renderConfigFields(type, config) {
+  const schema = NODE_CONFIG_SCHEMA[type];
+  const container = document.getElementById('nodeConfigFields');
+  let html = '';
+  schema.sections.forEach(section => {
+    html += `<div class="config-section-title">${section.title}</div>`;
+    section.fields.forEach(f => {
+      const val = config[f.key];
+      // showIf logic — generate a data attribute; visibility managed by onchange of the trigger field
+      const si = f.showIf ? `data-showif="${f.showIf}" data-showval="${f.showVal||'__truthy__'}"` : '';
+      // Determine initial display
+      let hidden = false;
+      if (f.showIf) {
+        const triggerVal = config[f.showIf];
+        if (f.showVal) hidden = triggerVal !== f.showVal;
+        else hidden = !triggerVal;
       }
+      const hiddenStyle = hidden ? 'style="display:none"' : '';
+      html += `<div class="config-field" id="field-${f.key}" ${si} ${hiddenStyle}>`;
+      html += `<label>${f.label}</label>`;
+      if (f.type === 'text' || f.type === 'number') {
+        html += `<input type="${f.type}" data-key="${f.key}" value="${(val!==undefined?val:(f.default||'')).toString().replace(/"/g,'&quot;')}"
+          placeholder="${f.ph||''}"
+          oninput="window.onConfigChange('${f.key}',this.value)">`;
+      } else if (f.type === 'textarea') {
+        html += `<textarea data-key="${f.key}" rows="3" placeholder="${f.ph||''}"
+          oninput="window.onConfigChange('${f.key}',this.value)">${(val!==undefined?val:'')}</textarea>`;
+      } else if (f.type === 'select') {
+        const curVal = val !== undefined ? val : (f.default || f.opts[0].v);
+        html += `<select data-key="${f.key}" onchange="window.onConfigChange('${f.key}',this.value);window.refreshConfigVisibility()">`;
+        f.opts.forEach(o => html += `<option value="${o.v}" ${curVal===o.v?'selected':''}>${o.l}</option>`);
+        html += `</select>`;
+      } else if (f.type === 'check') {
+        const checked = val !== undefined ? val : (f.default || false);
+        html += `<div class="checkbox-row">
+          <input type="checkbox" data-key="${f.key}" id="cfg_${f.key}" ${checked?'checked':''}
+            onchange="window.onConfigChange('${f.key}',this.checked);window.refreshConfigVisibility()">
+          <label for="cfg_${f.key}">Enabled</label>
+        </div>`;
+      }
+      html += `</div>`;
+    });
+  });
+  container.innerHTML = html;
+}
+
+window.onConfigChange = function(key, value) {
+  if (!currentConfigNodeId) return;
+  const n = editor.getNodeFromId(currentConfigNodeId);
+  if (!n) return;
+  if (!n.data.config) n.data.config = {};
+  n.data.config[key] = value;
+  editor.updateNodeDataFromId(currentConfigNodeId, n.data);
+};
+
+window.refreshConfigVisibility = function() {
+  document.querySelectorAll('#nodeConfigFields [data-showif]').forEach(el => {
+    const triggerKey = el.dataset.showif;
+    const triggerVal = el.dataset.showval;
+    const triggerEl = document.querySelector(`#nodeConfigFields [data-key="${triggerKey}"]`);
+    if (!triggerEl) return;
+    const currentVal = triggerEl.type === 'checkbox' ? triggerEl.checked : triggerEl.value;
+    const show = triggerVal === '__truthy__' ? !!currentVal : currentVal === triggerVal;
+    el.style.display = show ? '' : 'none';
+  });
+};
+
+window.saveNodeConfig = function() {
+  if (!currentConfigNodeId) return;
+  const n = editor.getNodeFromId(currentConfigNodeId);
+  if (!n) return;
+  const type = n.data.type;
+  const config = n.data.config || {};
+  const summary = getConfigSummary(type, config);
+  // Update the summary badge in the node DOM
+  const nodeEl = document.getElementById('node-'+currentConfigNodeId);
+  if (nodeEl) {
+    const summaryDiv = nodeEl.querySelector('.node-config-summary');
+    if (summaryDiv) {
+      summaryDiv.innerHTML = summary
+        ? `<span class="config-badge configured">⚙ ${summary}</span>`
+        : '';
+    }
+    // Mark configure button as configured
+    const cfgBtn = nodeEl.querySelectorAll('.node-footer-btn')[0];
+    if (cfgBtn && !cfgBtn.classList.contains('end-actions-btn')) {
+      cfgBtn.classList.toggle('configured', !!summary);
+    }
+  }
+  configSnapshot = null;
+  document.getElementById('nodeConfigPanel').style.display = 'none';
+  currentConfigNodeId = null;
+};
+
+window.closeNodeConfig = function() {
+  // Restore snapshot
+  if (currentConfigNodeId !== null && configSnapshot !== null) {
+    const n = editor.getNodeFromId(currentConfigNodeId);
+    if (n) { n.data.config = configSnapshot; editor.updateNodeDataFromId(currentConfigNodeId, n.data); }
+  }
+  document.getElementById('nodeConfigPanel').style.display = 'none';
+  currentConfigNodeId = null;
+  configSnapshot = null;
+};
+
+// ─────────────────────────────────────────────
+// End Actions panel
+// ─────────────────────────────────────────────
+let currentEANodeId = null;
+let eaSnapshot = null;
+
+const END_ACTION_TYPES = [
+  { value:'trigger',            label:'Trigger',           icon:'⚡' },
+  { value:'webhook',            label:'Webhook',           icon:'🌐' },
+  { value:'google_conversion',  label:'Google Conversion', icon:'📊' },
+  { value:'email_notification', label:'Email Alert',       icon:'📧' }
+];
+const EA_ICON = Object.fromEntries(END_ACTION_TYPES.map(t=>[t.value,t.icon]));
+
+window.showEndActionsPanel = function(nodeId) {
+  currentEANodeId = nodeId;
+  const node = editor.getNodeFromId(nodeId);
+  eaSnapshot = JSON.parse(JSON.stringify(node.data.endActions||[]));
+  const label = node.data.label || 'Node';
+  document.getElementById('endActionsPanelTitle').textContent = `⚡ End Actions — ${label}`;
+  renderEndActionsList(node.data.endActions||[]);
+  document.getElementById('endActionsPanel').style.display = 'block';
+};
+
+window.cancelEndActions = function() {
+  if (currentEANodeId !== null && eaSnapshot !== null) {
+    const n = editor.getNodeFromId(currentEANodeId);
+    if (n) { n.data.endActions = eaSnapshot; editor.updateNodeDataFromId(currentEANodeId, n.data); }
+  }
+  document.getElementById('endActionsPanel').style.display = 'none';
+  currentEANodeId = null; eaSnapshot = null;
+};
+
+window.saveEndActions = function() {
+  if (currentEANodeId !== null) {
+    const node = editor.getNodeFromId(currentEANodeId);
+    const actions = (node && node.data && node.data.endActions) ? node.data.endActions : [];
+    const nodeEl = document.getElementById('node-'+currentEANodeId);
+    if (nodeEl) {
+      const btn = nodeEl.querySelector('.end-actions-btn');
+      if (btn) {
+        if (actions.length === 0) {
+          btn.innerHTML = '⚡ End Actions';
+          btn.classList.remove('has-actions');
+        } else {
+          // Show unique icons + count/type summary
+          const types = [...new Set(actions.map(a=>a.type))];
+          const icons = types.map(t=>EA_ICON[t]||'⚡').join('');
+          const typeNames = types.map(t=>END_ACTION_TYPES.find(x=>x.value===t)?.label||t);
+          const summary = typeNames.length <= 2 ? typeNames.join(' + ') : typeNames.length + ' actions';
+          btn.innerHTML = `${icons} ${summary} ✓`;
+          btn.classList.add('has-actions');
+        }
+      }
+    }
+  }
+  eaSnapshot = null;
+  document.getElementById('endActionsPanel').style.display = 'none';
+  currentEANodeId = null;
+};
+
+function getEANodeActions() {
+  if (!currentEANodeId) return [];
+  const n = editor.getNodeFromId(currentEANodeId);
+  return (n && n.data && n.data.endActions) ? n.data.endActions : [];
+}
+function setEANodeActions(actions) {
+  if (!currentEANodeId) return;
+  const n = editor.getNodeFromId(currentEANodeId);
+  if (!n) return;
+  n.data.endActions = actions;
+  editor.updateNodeDataFromId(currentEANodeId, n.data);
+}
+
+window.renderEndActionsList = function(actions) {
+  const c = document.getElementById('endActionsList');
+  if (!actions || actions.length === 0) {
+    c.innerHTML = '<div class="empty-actions">No end actions yet.<br>Click "+ Add Action" to automate post-call tasks.</div>';
+    return;
+  }
+  c.innerHTML = actions.map((a,idx) => `
+    <div class="action-row">
+      <div class="action-type-tabs">
+        ${END_ACTION_TYPES.map(t=>`<label>
+          <input type="radio" name="at_${idx}" value="${t.value}" ${a.type===t.value?'checked':''}
+            onchange="window.updateActionType(${idx},this.value)">
+          ${t.icon} ${t.label}
+        </label>`).join('')}
+      </div>
+      ${getActionFields(a.type, idx, a)}
+      <button class="remove-action-btn" onclick="window.removeEndAction(${idx})">✕ Remove</button>
+    </div>`).join('');
+};
+
+window.getActionFields = function(type, idx, a) {
+  switch(type) {
+    case 'trigger': return `
+      <div class="action-field"><label>Trigger Action</label>
+        <select onchange="window.updateActionField(${idx},'trigger_action',this.value)">
+          <option value="">Select...</option>
+          <option value="tag"          ${a.trigger_action==='tag'?'selected':''}>Add Tag</option>
+          <option value="remove_tag"   ${a.trigger_action==='remove_tag'?'selected':''}>Remove Tag</option>
+          <option value="set_schedule" ${a.trigger_action==='set_schedule'?'selected':''}>Set Schedule</option>
+          <option value="transfer"     ${a.trigger_action==='transfer'?'selected':''}>Transfer Call</option>
+          <option value="sms"          ${a.trigger_action==='sms'?'selected':''}>Send SMS</option>
+        </select>
+      </div>
+      <div class="action-field"><label>Tag / Value</label>
+        <input type="text" value="${a.tag_value||''}" oninput="window.updateActionField(${idx},'tag_value',this.value)" placeholder="Tag name or ID">
+      </div>
+      <div class="action-field"><label>Condition (optional)</label>
+        <input type="text" value="${a.condition||''}" oninput="window.updateActionField(${idx},'condition',this.value)" placeholder="e.g. call duration > 60s">
+      </div>`;
+    case 'webhook': return `
+      <div class="action-field"><label>Webhook URL (POST)</label>
+        <input type="text" value="${a.webhook_url||''}" oninput="window.updateActionField(${idx},'webhook_url',this.value)" placeholder="https://example.com/webhook">
+      </div>
+      <div class="action-field"><label>Authentication</label>
+        <select onchange="window.updateActionField(${idx},'auth_type',this.value)">
+          <option value="none"  ${(a.auth_type||'none')==='none'?'selected':''}>None</option>
+          <option value="basic" ${a.auth_type==='basic'?'selected':''}>Basic Auth</option>
+          <option value="token" ${a.auth_type==='token'?'selected':''}>Bearer Token</option>
+        </select>
+      </div>
+      <div class="action-field"><label>Custom Body (Mustache — CTM variables)</label>
+        <textarea rows="3" oninput="window.updateActionField(${idx},'webhook_body',this.value)"
+          placeholder='{"caller":"{{caller_number}}","name":"{{caller_name}}","duration":"{{duration}}"}'>${a.webhook_body||''}</textarea>
+      </div>
+      <div class="action-field"><label>Notes</label>
+        <input type="text" value="${a.webhook_notes||''}" oninput="window.updateActionField(${idx},'webhook_notes',this.value)" placeholder="Integration notes...">
+      </div>`;
+    case 'google_conversion': return `
+      <div class="action-field"><label>Conversion Label (from Google Ads)</label>
+        <input type="text" value="${a.conversion_label||''}" oninput="window.updateActionField(${idx},'conversion_label',this.value)" placeholder="Conversion label">
+      </div>
+      <div class="action-field"><label>Conversion Value (optional)</label>
+        <input type="number" value="${a.conversion_value||''}" oninput="window.updateActionField(${idx},'conversion_value',this.value)" placeholder="0.00">
+      </div>
+      <div class="action-field"><label>Min Duration to Count as Conversion (sec)</label>
+        <input type="number" value="${a.min_duration||''}" oninput="window.updateActionField(${idx},'min_duration',this.value)" placeholder="e.g. 60">
+      </div>`;
+    case 'email_notification': return `
+      <div class="action-field"><label>Recipients (comma-separated)</label>
+        <input type="text" value="${a.recipients||''}" oninput="window.updateActionField(${idx},'recipients',this.value)" placeholder="email@example.com">
+      </div>
+      <div class="action-field"><label>Subject</label>
+        <input type="text" value="${a.subject||''}" oninput="window.updateActionField(${idx},'subject',this.value)" placeholder="New call notification">
+      </div>
+      <div class="action-field"><label>Trigger Condition</label>
+        <select onchange="window.updateActionField(${idx},'email_trigger',this.value)">
+          <option value="all"       ${(a.email_trigger||'all')==='all'?'selected':''}>All calls</option>
+          <option value="answered"  ${a.email_trigger==='answered'?'selected':''}>Answered calls only</option>
+          <option value="missed"    ${a.email_trigger==='missed'?'selected':''}>Missed calls only</option>
+          <option value="voicemail" ${a.email_trigger==='voicemail'?'selected':''}>Voicemail left</option>
+        </select>
+      </div>
+      <div class="action-field">
+        <div class="checkbox-row">
+          <input type="checkbox" id="inc_${idx}" ${a.include_details?'checked':''}
+            onchange="window.updateActionField(${idx},'include_details',this.checked)">
+          <label for="inc_${idx}">Include caller info, duration, recording link</label>
+        </div>
+      </div>`;
+    default: return '<p style="color:#5a7a9a;font-size:.8rem">Select an action type above.</p>';
+  }
+};
+
+window.updateActionType = function(idx, type) {
+  const actions = getEANodeActions();
+  actions[idx] = { type, trigger_action:'', tag_value:'', condition:'', webhook_url:'', webhook_body:'', webhook_notes:'', auth_type:'none', conversion_label:'', conversion_value:'', min_duration:'', recipients:'', subject:'', email_trigger:'all', include_details:true };
+  setEANodeActions(actions);
+  renderEndActionsList(actions);
+};
+window.updateActionField = function(idx, field, value) {
+  const actions = getEANodeActions();
+  if (!actions[idx]) return;
+  actions[idx][field] = value;
+  setEANodeActions(actions);
+};
+window.addEndAction = function() {
+  const actions = getEANodeActions();
+  actions.push({ type:'webhook', trigger_action:'', tag_value:'', condition:'', webhook_url:'', webhook_body:'', webhook_notes:'', auth_type:'none', conversion_label:'', conversion_value:'', min_duration:'', recipients:'', subject:'', email_trigger:'all', include_details:true });
+  setEANodeActions(actions);
+  renderEndActionsList(actions);
+};
+window.removeEndAction = function(idx) {
+  const actions = getEANodeActions();
+  actions.splice(idx,1);
+  setEANodeActions(actions);
+  renderEndActionsList(actions);
+};
+
+// ─────────────────────────────────────────────
+// Node context menu (click output port)
+// ─────────────────────────────────────────────
+function showNodeMenu(x, y, parentId, outIndex) {
+  const menu = document.getElementById('nodeMenu');
+  document.getElementById('nodeMenuSelect').innerHTML = NODE_TYPES_LIST.map(t=>`<option value="${t.value}">${t.label}</option>`).join('');
+  menu.style.left = (x+8)+'px'; menu.style.top = (y-10)+'px'; menu.style.display = 'block';
+  menu._parentId = parentId; menu._outIndex = outIndex;
+  document.getElementById('nodeMenuSelect').focus();
+}
+function hideNodeMenu() {
+  const m = document.getElementById('nodeMenu');
+  m.style.display = 'none'; m._parentId = m._outIndex = undefined;
+}
+document.getElementById('nodeMenuAddBtn').onclick = function() {
+  const m = document.getElementById('nodeMenu');
+  const type = document.getElementById('nodeMenuSelect').value;
+  if (m._parentId && type) addNodeWithDepth(type, Number(m._parentId), Number(m._outIndex));
+  hideNodeMenu();
+};
+document.getElementById('nodeMenuCancelBtn').onclick = hideNodeMenu;
+editor.precanvas.addEventListener('click', function(e) {
+  if (e.target.classList.contains('output')) {
+    const nd = e.target.closest('.drawflow-node');
+    const pId = parseInt(nd.id.replace('node-',''));
+    const outIdx = Array.from(nd.querySelectorAll('.output')).indexOf(e.target)+1;
+    const r = e.target.getBoundingClientRect();
+    showNodeMenu(r.right, r.top, pId, outIdx);
+    e.stopPropagation();
+  }
+});
+document.body.addEventListener('mousedown', function(e) {
+  if (document.getElementById('nodeMenu').style.display==='block' &&
+      !document.getElementById('nodeMenu').contains(e.target)) hideNodeMenu();
+});
+
+// ─────────────────────────────────────────────
+// Auto Arrange — hierarchical tree layout
+// ─────────────────────────────────────────────
+function autoArrange() {
+  const data = editor.drawflow.drawflow.Home.data;
+  const nodes = Object.values(data);
+  if (nodes.length === 0) return;
+
+  // Build parent→children map and find in-degree
+  const children = {};
+  const inDegree = {};
+  nodes.forEach(n => { children[n.id] = []; inDegree[n.id] = 0; });
+  nodes.forEach(n => {
+    Object.values(n.outputs||{}).forEach(out => {
+      (out.connections||[]).forEach(conn => {
+        const cid = parseInt(conn.node);
+        if (children[n.id]) children[n.id].push(cid);
+        if (inDegree[cid] !== undefined) inDegree[cid]++;
+      });
+    });
+  });
+
+  // Topological BFS — assign column = max(parent col) + 1
+  const col = {};
+  nodes.forEach(n => { col[n.id] = 0; });
+  // Kahn's algorithm pass
+  const queue = nodes.filter(n => inDegree[n.id] === 0).map(n => n.id);
+  const inDegCopy = { ...inDegree };
+  const topoOrder = [];
+  while (queue.length) {
+    const id = queue.shift();
+    topoOrder.push(id);
+    (children[id]||[]).forEach(cid => {
+      col[cid] = Math.max(col[cid]||0, (col[id]||0)+1);
+      inDegCopy[cid]--;
+      if (inDegCopy[cid] === 0) queue.push(cid);
     });
   }
-  editor.on('nodeMoved', function() { setTimeout(snapAllNodesToGrid, 10); });
+  // Any node not visited (cycle) — assign col based on current value
+  nodes.forEach(n => { if (!topoOrder.includes(n.id)) topoOrder.push(n.id); });
 
-  // Re-apply data-node attribute after import (for CSS)
-  editor.on('import', function() {
-    setTimeout(function() {
-      snapAllNodesToGrid();
-      const data = editor.drawflow.drawflow.Home.data;
-      Object.values(data).forEach(function(n) {
-        const el = document.getElementById('node-' + n.id);
-        if (el && n.data && n.data.type) {
-          el.setAttribute('data-node', n.data.type);
-        }
-      });
-    }, 80);
+  // Group by column, preserve relative vertical order within column
+  const colGroups = {};
+  topoOrder.forEach(id => {
+    const c = col[id]||0;
+    if (!colGroups[c]) colGroups[c] = [];
+    colGroups[c].push(id);
   });
 
-  // --- Save / Load ---
-  function saveFlow() {
-    const flow = editor.export();
-    const blob = new Blob([JSON.stringify(flow, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    const d = new Date();
-    a.download = `ctm_routing_${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}_${d.getHours()}-${d.getMinutes()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
+  const COL_W = 290, ROW_H = 230, START_X = 60, START_Y = 60;
+  const colKeys = Object.keys(colGroups).map(Number).sort((a,b)=>a-b);
 
-  function loadFlow() {
-    document.getElementById('fileInput').value = null;
-    document.getElementById('fileInput').click();
-  }
+  colKeys.forEach(c => {
+    const ids = colGroups[c];
+    const x = START_X + c * COL_W;
+    // Center the column vertically relative to total canvas height
+    ids.forEach((id, rowIdx) => {
+      const y = START_Y + rowIdx * ROW_H;
+      const el = document.getElementById('node-'+id);
+      if (el) { el.style.left = x+'px'; el.style.top = y+'px'; }
+      data[id].pos_x = x;
+      data[id].pos_y = y;
+    });
+  });
 
-  function handleFile(evt) {
-    const file = evt.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      try {
-        const obj = JSON.parse(e.target.result);
-        // Ensure all node names are strings (Drawflow requirement)
-        for (const k in obj.drawflow.Home.data) {
-          const n = obj.drawflow.Home.data[k];
-          if (typeof n.name !== 'string') n.name = String(n.name || '');
-        }
-        editor.clear();
-        editor.import(obj);
-      } catch (ex) {
-        alert('Failed to load: ' + ex);
+  // Redraw all connections
+  nodes.forEach(n => editor.updateConnectionNodes('node-'+n.id));
+}
+
+// ─────────────────────────────────────────────
+// Grid snap
+// ─────────────────────────────────────────────
+function snapToGrid() {
+  const grid = 32;
+  const data = editor.drawflow.drawflow.Home.data;
+  Object.values(data).forEach(n => {
+    const el = document.getElementById('node-'+n.id);
+    if (el) {
+      const l = Math.round(parseInt(el.style.left)/grid)*grid;
+      const t = Math.round(parseInt(el.style.top)/grid)*grid;
+      el.style.left = l+'px'; el.style.top = t+'px';
+      n.pos_x = l; n.pos_y = t;
+    }
+  });
+}
+editor.on('nodeMoved', () => setTimeout(snapToGrid, 10));
+
+// ─────────────────────────────────────────────
+// Import — restore data-node attributes
+// ─────────────────────────────────────────────
+editor.on('import', function() {
+  setTimeout(function() {
+    snapToGrid();
+    const data = editor.drawflow.drawflow.Home.data;
+    Object.values(data).forEach(n => {
+      const el = document.getElementById('node-'+n.id);
+      if (el && n.data && n.data.type) el.setAttribute('data-node', n.data.type);
+    });
+  }, 80);
+});
+
+// ─────────────────────────────────────────────
+// Save / Load
+// ─────────────────────────────────────────────
+function saveFlow() {
+  const flow = editor.export();
+  const blob = new Blob([JSON.stringify(flow,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  a.download = `ctm_routing_${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function loadFlow() {
+  document.getElementById('fileInput').value = null;
+  document.getElementById('fileInput').click();
+}
+function handleFile(evt) {
+  const file = evt.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const obj = JSON.parse(e.target.result);
+      for (const k in obj.drawflow.Home.data) {
+        const n = obj.drawflow.Home.data[k];
+        if (typeof n.name !== 'string') n.name = String(n.name||'');
       }
-    };
-    reader.readAsText(file);
-  }
-
-  // --- End Actions ---
-  let currentEndActionsNodeId = null;
-  // Snapshot of actions at panel open (for cancel)
-  let endActionsSnapshot = null;
-
-  const END_ACTION_TYPES = [
-    { value: 'trigger',            label: 'Trigger',              icon: '⚡' },
-    { value: 'webhook',            label: 'Webhook',              icon: '🌐' },
-    { value: 'google_conversion',  label: 'Google Conversion',    icon: '📊' },
-    { value: 'email_notification', label: 'Email Notification',   icon: '📧' }
-  ];
-
-  window.showEndActionsPanel = function(nodeId) {
-    currentEndActionsNodeId = nodeId;
-    const node = editor.getNodeFromId(nodeId);
-    endActionsSnapshot = JSON.parse(JSON.stringify(node.data.endActions || []));
-    renderEndActionsList(node.data.endActions || []);
-    document.getElementById('endActionsPanel').style.display = 'block';
+      editor.clear();
+      editor.import(obj);
+    } catch(ex) { alert('Failed to load: '+ex); }
   };
-
-  window.closeEndActionsPanel = function() {
-    // Restore snapshot on cancel
-    if (currentEndActionsNodeId !== null && endActionsSnapshot !== null) {
-      const node = editor.getNodeFromId(currentEndActionsNodeId);
-      if (node) {
-        node.data.endActions = endActionsSnapshot;
-        editor.updateNodeDataFromId(currentEndActionsNodeId, node.data);
-      }
-    }
-    document.getElementById('endActionsPanel').style.display = 'none';
-    currentEndActionsNodeId = null;
-    endActionsSnapshot = null;
-  };
-
-  window.saveEndActions = function() {
-    if (currentEndActionsNodeId !== null) {
-      const node = editor.getNodeFromId(currentEndActionsNodeId);
-      const hasActions = node && node.data && node.data.endActions && node.data.endActions.length > 0;
-      // Update the button appearance on the node
-      const nodeElem = document.getElementById('node-' + currentEndActionsNodeId);
-      if (nodeElem) {
-        const btn = nodeElem.querySelector('.end-actions-btn');
-        if (btn) {
-          btn.textContent = hasActions ? '⚡ End Actions ✓' : '⚡ End Actions';
-          btn.classList.toggle('has-actions', hasActions);
-        }
-      }
-    }
-    endActionsSnapshot = null; // Don't restore on close
-    document.getElementById('endActionsPanel').style.display = 'none';
-    currentEndActionsNodeId = null;
-  };
-
-  function getNodeEndActions() {
-    if (!currentEndActionsNodeId) return [];
-    const node = editor.getNodeFromId(currentEndActionsNodeId);
-    return (node && node.data && node.data.endActions) ? node.data.endActions : [];
-  }
-
-  function setNodeEndActions(actions) {
-    if (!currentEndActionsNodeId) return;
-    const node = editor.getNodeFromId(currentEndActionsNodeId);
-    if (!node) return;
-    node.data.endActions = actions;
-    editor.updateNodeDataFromId(currentEndActionsNodeId, node.data);
-  }
-
-  window.renderEndActionsList = function(actions) {
-    const container = document.getElementById('endActionsList');
-    if (!actions || actions.length === 0) {
-      container.innerHTML = '<div class="empty-actions">No end actions configured.<br>Click "+ Add Action" to add post-call automation.</div>';
-      return;
-    }
-    container.innerHTML = actions.map((action, idx) => `
-      <div class="action-row" data-idx="${idx}">
-        <div class="action-type-tabs">
-          ${END_ACTION_TYPES.map(t => `
-            <label>
-              <input type="radio" name="actionType_${idx}" value="${t.value}"
-                ${action.type === t.value ? 'checked' : ''}
-                onchange="window.updateActionType(${idx}, this.value)">
-              ${t.icon} ${t.label}
-            </label>`).join('')}
-        </div>
-        ${getActionFields(action.type, idx, action)}
-        <button class="remove-action-btn" onclick="window.removeEndAction(${idx})">✕ Remove</button>
-      </div>
-    `).join('');
-  };
-
-  window.getActionFields = function(type, idx, action) {
-    switch (type) {
-      case 'trigger':
-        return `
-          <div class="action-field">
-            <label>Trigger Action</label>
-            <select onchange="window.updateActionField(${idx},'trigger_action',this.value)">
-              <option value="">Select action...</option>
-              <option value="tag"          ${action.trigger_action==='tag'          ? 'selected':''}>Add Tag</option>
-              <option value="remove_tag"   ${action.trigger_action==='remove_tag'   ? 'selected':''}>Remove Tag</option>
-              <option value="set_schedule" ${action.trigger_action==='set_schedule' ? 'selected':''}>Set Schedule</option>
-              <option value="transfer"     ${action.trigger_action==='transfer'     ? 'selected':''}>Transfer Call</option>
-            </select>
-          </div>
-          <div class="action-field">
-            <label>Tag ID / Value</label>
-            <input type="text" value="${action.tag_value||''}"
-              oninput="window.updateActionField(${idx},'tag_value',this.value)"
-              placeholder="Enter tag ID or value">
-          </div>`;
-      case 'webhook':
-        return `
-          <div class="action-field">
-            <label>Webhook URL (POST)</label>
-            <input type="text" value="${action.webhook_url||''}"
-              oninput="window.updateActionField(${idx},'webhook_url',this.value)"
-              placeholder="https://example.com/webhook">
-          </div>
-          <div class="action-field">
-            <label>Custom Body (Mustache format)</label>
-            <textarea rows="3" oninput="window.updateActionField(${idx},'webhook_body',this.value)"
-              placeholder='{"caller":"{{caller_number}}"}'>${action.webhook_body||''}</textarea>
-          </div>
-          <div class="action-field">
-            <label>Notes</label>
-            <input type="text" value="${action.webhook_notes||''}"
-              oninput="window.updateActionField(${idx},'webhook_notes',this.value)"
-              placeholder="Internal notes about this webhook">
-          </div>`;
-      case 'google_conversion':
-        return `
-          <div class="action-field">
-            <label>Conversion Label</label>
-            <input type="text" value="${action.conversion_label||''}"
-              oninput="window.updateActionField(${idx},'conversion_label',this.value)"
-              placeholder="Conversion label from Google Ads">
-          </div>
-          <div class="action-field">
-            <label>Conversion Value (optional)</label>
-            <input type="number" value="${action.conversion_value||''}"
-              oninput="window.updateActionField(${idx},'conversion_value',this.value)"
-              placeholder="0.00">
-          </div>`;
-      case 'email_notification':
-        return `
-          <div class="action-field">
-            <label>Recipients (comma-separated)</label>
-            <input type="text" value="${action.recipients||''}"
-              oninput="window.updateActionField(${idx},'recipients',this.value)"
-              placeholder="email@example.com, other@example.com">
-          </div>
-          <div class="action-field">
-            <label>Subject</label>
-            <input type="text" value="${action.subject||''}"
-              oninput="window.updateActionField(${idx},'subject',this.value)"
-              placeholder="Call notification subject">
-          </div>
-          <div class="action-field">
-            <div class="checkbox-row">
-              <input type="checkbox" id="inc_${idx}" ${action.include_details ? 'checked' : ''}
-                onchange="window.updateActionField(${idx},'include_details',this.checked)">
-              <label for="inc_${idx}" style="margin:0;color:#ccc;">Include caller info, duration, and recording</label>
-            </div>
-          </div>`;
-      default:
-        return '<p style="color:#8ecff7;font-size:0.85rem;">Select an action type above.</p>';
-    }
-  };
-
-  window.updateActionType = function(idx, type) {
-    const actions = getNodeEndActions();
-    if (!actions[idx]) return;
-    actions[idx] = { type, trigger_action:'', tag_value:'', webhook_url:'', webhook_body:'', webhook_notes:'', conversion_label:'', conversion_value:'', recipients:'', subject:'', include_details:true };
-    setNodeEndActions(actions);
-    renderEndActionsList(actions);
-  };
-
-  window.updateActionField = function(idx, field, value) {
-    const actions = getNodeEndActions();
-    if (!actions[idx]) return;
-    actions[idx][field] = value;
-    setNodeEndActions(actions);
-  };
-
-  window.addEndAction = function() {
-    const actions = getNodeEndActions();
-    actions.push({ type:'webhook', trigger_action:'', tag_value:'', webhook_url:'', webhook_body:'', webhook_notes:'', conversion_label:'', conversion_value:'', recipients:'', subject:'', include_details:true });
-    setNodeEndActions(actions);
-    renderEndActionsList(actions);
-  };
-
-  window.removeEndAction = function(idx) {
-    const actions = getNodeEndActions();
-    actions.splice(idx, 1);
-    setNodeEndActions(actions);
-    renderEndActionsList(actions);
-  };
+  reader.readAsText(file);
+}
 </script>
 </body>
 </html>
