@@ -17,6 +17,8 @@
     #toolbar button:hover { background:#16c8ff; }
     #toolbar .btn-arrange { background:#a259db; color:#fff; }
     #toolbar .btn-arrange:hover { background:#b870f0; }
+    #toolbar .btn-generate { background:#5fd18a; color:#182132; }
+    #toolbar .btn-generate:hover { background:#7fe0a0; }
     .toolbar-hint { font-size:11px; color:#5a7a9a; margin-left:auto; }
 
     /* ── Canvas ── */
@@ -153,6 +155,7 @@
     <button onclick="saveFlow()">💾 Save</button>
     <button onclick="loadFlow()">📂 Load</button>
     <button class="btn-arrange" onclick="autoArrange()">⚡ Auto Arrange</button>
+    <button class="btn-generate" onclick="generatePythonScript()">🐍 Generate Script</button>
     <input type="file" id="fileInput" style="display:none;" accept="application/json" onchange="handleFile(event)">
     <span class="toolbar-hint">Click an output port to branch · Double-click label to rename</span>
   </div>
@@ -223,7 +226,8 @@ const NODE_CONFIG_SCHEMA = {
         { key:'phoneNumber',    label:'Phone Number',        type:'text',   ph:'+1 (555) 000-0000' },
         { key:'campaignSource', label:'Campaign / Source',   type:'text',   ph:'e.g. Google Paid Search' },
         { key:'numberType',     label:'Number Type',         type:'select',
-          opts:[{v:'direct',l:'Direct Number'},{v:'pool',l:'Number Pool'},{v:'ported',l:'Ported / Bring Your Own'}] },
+          opts:[{v:'local',l:'Local (purchase by area code)'},{v:'tollfree',l:'Toll-Free (auto-search)'},{v:'pool',l:'Number Pool'},{v:'ported',l:'Ported / Bring Your Own'}] },
+        { key:'areaCode',       label:'Area Code (for local purchase)', type:'text', ph:'e.g. 404', showIf:'numberType', showVal:'local' },
       ]},
       { title: 'Call Settings', fields: [
         { key:'recordingEnabled',  label:'Call Recording',         type:'check', default:true },
@@ -1233,6 +1237,431 @@ function loadFlow() {
   document.getElementById('fileInput').value = null;
   document.getElementById('fileInput').click();
 }
+// ─────────────────────────────────────────────
+// Python Script Generator
+// ─────────────────────────────────────────────
+
+// Maps diagram node types to CTM action_type strings used in voice menu items
+const CTM_ACTION_TYPE = {
+  ReceivingNumber: 'PhysicalPhoneNumber',
+  Queue:           'CallQueue',
+  IVR:             'VoiceMenu',
+  SmartRouter:     'ConditionalRouter',
+  Voicemail:       'Voicemail',
+  NoAnswer:        'NoAnswer',
+  EndAction:       'Hangup'
+};
+
+// Maps diagram node types to CTM dial_route strings used in tracking number routing
+const CTM_DIAL_ROUTE = {
+  IVR:             'voice_menu',
+  Queue:           'call_queue',
+  ReceivingNumber: 'receiving_number',
+  SmartRouter:     'conditional_router',
+  Voicemail:       'voicemail'
+};
+const CTM_DIAL_ROUTE_ID_KEY = {
+  IVR:             'voice_menu_id',
+  Queue:           'call_queue_id',
+  ReceivingNumber: 'receiving_number_id',
+  SmartRouter:     'conditional_router_id',
+  Voicemail:       'voicemail_id'
+};
+
+function esc(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n'); }
+
+function generatePythonScript() {
+  const flow = editor.export();
+  const nodes = flow.drawflow.Home.data;
+  if (Object.keys(nodes).length === 0) { alert('Flow is empty — add some nodes first.'); return; }
+
+  // Build graph: outConns[nodeId][outputIndex] = targetNodeId
+  const outConns = {}, childList = {}, inDeg = {};
+  Object.values(nodes).forEach(n => {
+    outConns[n.id] = {}; childList[n.id] = []; inDeg[n.id] = 0;
+    Object.entries(n.outputs || {}).forEach(([key, out]) => {
+      const idx = parseInt(key.replace('output_', ''));
+      (out.connections || []).forEach(c => {
+        const cid = parseInt(c.node);
+        outConns[n.id][idx] = cid;
+        childList[n.id].push(cid);
+      });
+    });
+  });
+
+  // Topological sort (Kahn's)
+  Object.values(nodes).forEach(n => childList[n.id].forEach(cid => inDeg[cid]++));
+  const q = Object.keys(nodes).filter(id => inDeg[parseInt(id)] === 0);
+  const order = [];
+  while (q.length) {
+    const id = q.shift(); order.push(parseInt(id));
+    childList[parseInt(id)].forEach(cid => { if (--inDeg[cid] === 0) q.push(String(cid)); });
+  }
+  Object.keys(nodes).forEach(id => { if (!order.includes(parseInt(id))) order.push(parseInt(id)); });
+
+  // ── Script header ─────────────────────────────────────────────────────────
+  const now = new Date().toLocaleString();
+  const lines = [
+`#!/usr/bin/env python3
+"""
+CTM Routing Flow Provisioning Script
+Generated: ${now}
+Tool: CTM Routing Planner
+
+This script provisions the routing flow in a live CTM account via the REST API.
+Resources are created in dependency order so that IDs are available for cross-linking.
+
+BEFORE RUNNING:
+  1. Fill in ACCOUNT_ID, API_KEY, and API_SECRET below
+  2. Install dependencies:  pip install requests
+  3. Run:  python3 ctm_flow_setup.py
+"""
+
+import requests
+import json
+import sys
+from base64 import b64encode
+
+# ── CONFIGURE BEFORE RUNNING ──────────────────────────────────────────────────
+ACCOUNT_ID = "YOUR_ACCOUNT_ID"   # CTM Account ID (numeric)
+API_KEY    = "YOUR_API_KEY"       # CTM API Key    (Settings → API)
+API_SECRET = "YOUR_API_SECRET"    # CTM API Secret (Settings → API)
+# ─────────────────────────────────────────────────────────────────────────────
+
+BASE  = f"https://api.calltrackingmetrics.com/api/v1/accounts/{ACCOUNT_ID}"
+HEADS = {
+    "Authorization": "Basic " + b64encode(f"{API_KEY}:{API_SECRET}".encode()).decode(),
+    "Content-Type": "application/json"
+}
+
+def post(path, data=None):
+    r = requests.post(BASE + path, headers=HEADS, json=data or {})
+    if not r.ok:
+        print(f"  ✗ POST {path} failed [{r.status_code}]: {r.text[:300]}")
+        r.raise_for_status()
+    return r.json()
+
+def patch(path, data):
+    r = requests.patch(BASE + path, headers=HEADS, json=data)
+    if not r.ok:
+        print(f"  ✗ PATCH {path} failed [{r.status_code}]: {r.text[:300]}")
+        r.raise_for_status()
+    return r.json()
+
+def put(path, data):
+    r = requests.put(BASE + path, headers=HEADS, json=data)
+    if not r.ok:
+        print(f"  ✗ PUT {path} failed [{r.status_code}]: {r.text[:300]}")
+        r.raise_for_status()
+    return r.json()
+
+# Stores CTM resource IDs keyed by diagram node ID
+node_ids = {}
+
+print("=" * 60)
+print("CTM Routing Flow Provisioning")
+print("=" * 60)
+`];
+
+  // ── Per-node code blocks ──────────────────────────────────────────────────
+  order.forEach((nodeId, stepIdx) => {
+    const n = nodes[nodeId];
+    const d = n.data || {};
+    const c = d.config || {};
+    const type = d.type;
+    const label = esc(d.label || type);
+    const notes = esc(d.notesValue || '');
+    const nk = `n${nodeId}`;
+    const out = outConns[nodeId] || {};
+    const step = stepIdx + 1;
+    const bar = '─'.repeat(Math.max(2, 56 - label.length - type.length));
+
+    lines.push(`\n# ── Step ${step}: ${label} (${type}) ${bar}`);
+
+    if (type === 'ReceivingNumber') {
+      lines.push(
+`print("\\nStep ${step}: Creating Receiving Number — ${label}")
+r = post("/receiving_numbers", {
+    "number": "${esc(c.phoneNumber || '+1XXXXXXXXXX')}",
+    "name": "${label}",
+    "description": "${notes}"
+})
+node_ids["${nk}"] = r["receiving_number"]["id"]
+print(f'  ✓ Receiving Number created: ID {node_ids["${nk}"]}')`);
+
+      // If simultaneous dial numbers exist, add them
+      if (c.simultaneousDial) {
+        const extra = c.simultaneousDial.split(',').map(x => x.trim()).filter(Boolean);
+        extra.forEach((num, i) => {
+          lines.push(
+`r2 = post("/receiving_numbers", {"number": "${esc(num)}", "name": "${label} (sim ${i+1})"})
+# Simultaneous dial partner: ${num}`);
+        });
+      }
+
+    } else if (type === 'Queue') {
+      const strategy = {round_robin:'round_robin', simultaneous:'simultaneous', priority:'priority', skills:'skills_based'}[c.ringStrategy] || 'round_robin';
+      const noAnswerOut = out[1] ? `node_ids.get("n${out[1]}", 0)` : '0';
+      const noAnswerType = out[1] && nodes[out[1]] ? CTM_ACTION_TYPE[nodes[out[1]].data.type] || 'Hangup' : 'Hangup';
+      lines.push(
+`print("\\nStep ${step}: Creating Call Queue — ${label}")
+r = post("/call_queues", {
+    "name": "${label}",
+    "ring_to": "${strategy}",
+    "timeout": ${c.ringTimeoutPerAgent || 20},
+    "max_queue_wait": ${c.maxWaitSeconds || 120},
+    "description": "${notes}"
+})
+node_ids["${nk}"] = r["call_queue"]["id"]
+print(f'  ✓ Queue created: ID {node_ids["${nk}"]}')
+
+# Set queue no-answer route
+patch(f'/queues/{node_ids["${nk}"]}', {
+    "default_action_type": "${noAnswerType}",
+    "default_action_id": ${noAnswerOut}
+})
+print("  ✓ No-answer route configured")`);
+
+    } else if (type === 'IVR') {
+      const voice = c.voice || 'alice';
+      const lang  = 'en-US';
+      let greetMsg;
+      if (c.greetingType === 'audio' && c.audioUrl)
+        greetMsg = esc(c.audioUrl);
+      else
+        greetMsg = `say:${voice}:${lang}:${esc(c.greetingText || 'Thank you for calling. Please choose from the following options.')}`;
+      const errMsg = `say:${voice}:${lang}:Sorry, I did not get that. Please try again.`;
+      const outputLabels = d.outputLabels || [];
+      const itemLines = outputLabels.map((lbl, i) => {
+        const outIdx = i + 1;
+        const tid = out[outIdx];
+        if (tid && nodes[tid]) {
+          const at = CTM_ACTION_TYPE[nodes[tid].data.type] || 'PhysicalPhoneNumber';
+          return `        {"input_key": "${outIdx}", "action_type": "${at}", "action_id": node_ids.get("n${tid}", 0)},  # ${esc(nodes[tid].data.label)}`;
+        }
+        return `        {"input_key": "${outIdx}", "action_type": "Hangup", "action_id": 0},  # (unconnected)`;
+      });
+      lines.push(
+`print("\\nStep ${step}: Creating IVR Voice Menu — ${label}")
+r = post("/voice_menus", {
+    "name": "${label}",
+    "play_message": "${greetMsg}",
+    "voice": "${voice}",
+    "lang": "${lang}",
+    "barge_in": ${c.interruptible !== false ? 1 : 0},
+    "input_timeout": ${c.timeoutSeconds || 5},
+    "prompt_retries": ${c.maxRetries || 3},
+    "error_message": "${errMsg}",
+    "items": [
+${itemLines.join('\n')}
+    ]
+})
+node_ids["${nk}"] = r["voice_menu"]["id"]
+print(f'  ✓ IVR Voice Menu created: ID {node_ids["${nk}"]}')`);
+
+    } else if (type === 'SmartRouter') {
+      const outputLabels = d.outputLabels || [];
+      const defaultTid = out[1];
+      const defaultNk  = defaultTid ? `n${defaultTid}` : null;
+      const defaultType = defaultTid && nodes[defaultTid] ? CTM_ACTION_TYPE[nodes[defaultTid].data.type] || 'Hangup' : 'Hangup';
+      const ruleComments = outputLabels.map((lbl, i) => {
+        const tid = out[i+1];
+        const dest = tid && nodes[tid] ? esc(nodes[tid].data.label) : '(unconnected)';
+        return `    # Rule ${i+1}: "${esc(lbl || `Condition ${i+1}`)}" → ${dest}  (node_ids.get("n${tid||0}", 0))`;
+      }).join('\n');
+      lines.push(
+`print("\\nStep ${step}: Creating Smart Router — ${label}")
+# Routing strategy: ${c.routingStrategy || 'not specified'}
+# ${c.conditionCount || '?'} conditions — see notes below
+# TODO: Define routing_rules array conditions based on your strategy
+# ${esc(c.conditionNotes || 'No condition notes captured')}
+routing_rules = [
+${ruleComments}
+    # Each rule needs: {"conditions": [...], "action_type": "...", "action_id": ...}
+    # See: https://postman.calltrackingmetrics.com for routing_rules schema
+]
+r = post("/conditional_routers", {
+    "conditional_router": {
+        "name": "${label}",
+        "description": "${esc(c.conditionNotes || '')}",
+        "routing_rules": routing_rules,
+        "router_default_type": "${defaultType}",
+        "router_default_id": node_ids.get("${defaultNk || 'NONE'}", 0),
+        "use_enhanced_caller_id": False
+    }
+})
+node_ids["${nk}"] = r["conditional_router"]["id"]
+print(f'  ✓ Smart Router created: ID {node_ids["${nk}"]}')`);
+
+    } else if (type === 'Voicemail') {
+      const voice = 'alice';
+      let greetMsg;
+      if (c.greetingType === 'audio' && c.greetingAudioUrl)
+        greetMsg = esc(c.greetingAudioUrl);
+      else if (c.greetingType === 'tts' && c.greetingText)
+        greetMsg = `say:${voice}:en-US:${esc(c.greetingText)}`;
+      else
+        greetMsg = '';
+      lines.push(
+`print("\\nStep ${step}: Voicemail — ${label}")
+# Voicemail boxes are destinations within CTM; reference by ID when setting dial routes
+# Greeting: ${greetMsg || '(default system greeting)'}
+# Email transcription: ${c.emailTranscription ? 'Yes → ' + esc(c.notificationEmail || '') : 'No'}
+# Max duration: ${c.maxDuration || 60}s
+# TODO: Retrieve or create voicemail box ID and set below
+node_ids["${nk}"] = 0  # ← Replace with your CTM Voicemail box ID
+print(f'  ⚠ Voicemail "{label}" — set node_ids["${nk}"] to your CTM voicemail ID')`);
+
+    } else if (type === 'NoAnswer') {
+      const action = c.noAnswerAction || 'voicemail';
+      const tid = out[1];
+      lines.push(
+`print("\\nStep ${step}: No Answer Branch — ${label}")
+# Action: ${action} | Max rings: ${c.maxRings || 30}s
+# This is configured as the no_answer/default_action on the upstream Queue or Tracking Number
+# Destination node: ${tid && nodes[tid] ? esc(nodes[tid].data.label) : '(unconnected)'}  ID ref: node_ids.get("n${tid||0}", 0)
+node_ids["${nk}"] = node_ids.get("n${tid||0}", 0)  # propagate destination ID
+print("  ℹ No Answer Branch handled via upstream queue default_action")`);
+
+    } else if (type === 'TrackingNumber') {
+      const numType = c.numberType || 'local';
+      const areaCode = c.areaCode || 'XXX';
+      let purchaseBlock;
+      if (numType === 'tollfree') {
+        purchaseBlock =
+`# Search for available toll-free number then purchase
+search = requests.get(f"{BASE}/numbers/search.json?country=US&searchby=tollfree&per_page=10", headers=HEADS).json()
+if not search.get("numbers"):
+    print("  ✗ No toll-free numbers available"); sys.exit(1)
+toll_number = search["numbers"][0]
+print(f"  Using toll-free: {toll_number}")
+r = post("/numbers", {"phone_number": toll_number, "test": False})`;
+      } else {
+        purchaseBlock =
+`r = post("/numbers/areacode", {"area_code": "${areaCode}", "test": False})`;
+      }
+
+      // Find first downstream node and its type for dial_route
+      const tid = out[1];
+      const tnode = tid && nodes[tid] ? nodes[tid] : null;
+      const ttype = tnode ? tnode.data.type : null;
+      const tLabel = tnode ? esc(tnode.data.label) : 'none';
+      const drType = ttype ? (CTM_DIAL_ROUTE[ttype] || 'receiving_number') : null;
+      const drIdKey = ttype ? (CTM_DIAL_ROUTE_ID_KEY[ttype] || 'receiving_number_id') : null;
+      const tnk = tid ? `n${tid}` : null;
+
+      // Direct receiving number: use the simpler /add endpoint
+      const isDirectRN = ttype === 'ReceivingNumber';
+      let routingBlock;
+      if (isDirectRN && tnk) {
+        routingBlock =
+`# Direct routing: add receiving number to tracking number
+post(f'/numbers/{node_ids["${nk}"]}/receiving_numbers/{node_ids["${tnk}"]}/add')
+print(f'  ✓ Receiving number linked to tracking number')`;
+      } else if (drType && tnk) {
+        routingBlock =
+`# Set dial route → ${tLabel} (${ttype})
+put(f'/numbers/{node_ids["${nk}"]}/dial_routes', {
+    "virtual_phone_number.dial_route": "${drType}",
+    "virtual_phone_number.${drIdKey}": node_ids.get("${tnk}", 0)
+})
+print(f'  ✓ Dial route set to ${tLabel}')`;
+      } else {
+        routingBlock = `# No downstream connection — configure routing manually in CTM`;
+      }
+
+      // Update number settings
+      lines.push(
+`print("\\nStep ${step}: Purchasing Tracking Number — ${label}")
+print(f"  Area code: ${areaCode} | Type: ${numType} | Campaign: ${esc(c.campaignSource || '')}")
+${purchaseBlock}
+node_ids["${nk}"] = r["id"]
+print(f'  ✓ Tracking Number purchased: {r.get("number","?")}  ID: {node_ids["${nk}"]}')
+
+# Update tracking number settings
+post(f'/numbers/{node_ids["${nk}"]}/update_number', {
+    "name": "${label}",
+    ${c.campaignSource ? `"google_campaign": "${esc(c.campaignSource)}",` : ''}
+    "sms_enabled": False
+})
+${routingBlock}
+${c.whisperEnabled && c.whisperMessage ? `# Whisper message: "${esc(c.whisperMessage)}" — configure in CTM number settings` : ''}`);
+
+    } else if (type === 'EndAction') {
+      const endActions = d.endActions || [];
+      if (endActions.length === 0) {
+        lines.push(`# End Action node: ${label} — no actions configured`);
+      } else {
+        endActions.forEach((ea, ei) => {
+          if (ea.type === 'trigger') {
+            lines.push(
+`print("\\nStep ${step}.${ei+1}: Creating Trigger — ${label} (${ea.trigger_action || 'trigger'})")
+r = post("/triggers", {
+    "automator": {
+        "name": "${label}",
+        "position": "end",
+        "delay_seconds": 0,
+        "routing_rules": [
+            # TODO: Add trigger conditions/actions
+            # Trigger action: ${ea.trigger_action || '?'} | Value: ${esc(ea.tag_value || '')}
+            # Condition: ${esc(ea.condition || 'none')}
+        ]
+    }
+})
+node_ids["${nk}_trigger_${ei}"] = r.get("automator", {}).get("id", 0)
+print(f'  ✓ Trigger created: ID {node_ids["${nk}_trigger_${ei}"]}')`);
+          } else if (ea.type === 'webhook') {
+            lines.push(
+`print("\\nStep ${step}.${ei+1}: Webhook End Action — ${label}")
+# Webhook URL: ${esc(ea.webhook_url || 'NOT SET')}
+# Auth type: ${ea.auth_type || 'none'}
+# Body template: ${esc(ea.webhook_body || '').substring(0, 80)}
+# Configure this as a Trigger in CTM pointing to the webhook above
+# or wire it directly in the routing node's End Actions in the CTM UI`);
+          } else if (ea.type === 'google_conversion') {
+            lines.push(
+`print("\\nStep ${step}.${ei+1}: Google Conversion — ${label}")
+# Conversion Label: ${esc(ea.conversion_label || 'NOT SET')}
+# Conversion Value: ${ea.conversion_value || '0'}
+# Min Duration: ${ea.min_duration || '0'}s
+# Configure Google Ads conversion tracking in CTM: Settings → Integrations → Google Ads`);
+          } else if (ea.type === 'email_notification') {
+            lines.push(
+`print("\\nStep ${step}.${ei+1}: Email Notification — ${label}")
+# Recipients: ${esc(ea.recipients || 'NOT SET')}
+# Subject: ${esc(ea.subject || '')}
+# Trigger: ${ea.email_trigger || 'all'}
+# Configure via CTM Triggers with email action`);
+          }
+        });
+      }
+    }
+  });
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  lines.push(`
+print("\\n" + "=" * 60)
+print("✅ Provisioning complete!")
+print("=" * 60)
+print("\\nCreated resource IDs:")
+for k, v in node_ids.items():
+    print(f"  {k}: {v}")
+print("\\nNext steps:")
+print("  1. Log into CTM and verify each resource was created correctly")
+print("  2. Assign tracking numbers to your campaigns / sources")
+print("  3. Test incoming calls through the full flow")
+`);
+
+  // Download as .py file
+  const script = lines.join('\n');
+  const blob = new Blob([script], { type: 'text/x-python' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ctm_flow_setup.py';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  console.log('Script generated:', script.split('\n').length, 'lines');
+}
+
 function handleFile(evt) {
   const file = evt.target.files[0]; if(!file) return;
   const reader = new FileReader();
