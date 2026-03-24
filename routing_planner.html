@@ -5,164 +5,242 @@
   <title>CTM Routing Planner – Visual Call Flow Designer</title>
   <link rel="stylesheet" href="drawflow.min.css" />
   <style>
-    body { background: #182132; color: #fff; font-family: sans-serif; margin:0;}
-    #toolbar { padding:18px 32px; background:#25324a; }
-    #toolbar button, #toolbar select { font-size:16px; margin-right:12px; background:#01BDF6;color:#182132;border:none;border-radius:7px;padding:8px 18px; font-weight:bold; cursor:pointer;}
-    #toolbar select { padding:7px 8px;}
-    #toolbar button:hover { background:#16c8ff;}
-    #toolbar .end-actions-btn { background:#5fd18a;font-size:12px;padding:4px 10px;margin-left:8px;}
+    * { box-sizing: border-box; }
+    body { background: #182132; color: #fff; font-family: sans-serif; margin:0; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+    #toolbar {
+      padding: 10px 20px;
+      background: #25324a;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    #toolbar img { height: 36px; vertical-align: middle; }
+    #toolbar label { font-size: 13px; color: #90bee5; white-space: nowrap; }
+    #toolbar select {
+      font-size: 14px;
+      background: #25324a;
+      color: #01BDF6;
+      border: 1px solid #01BDF6;
+      border-radius: 6px;
+      padding: 6px 8px;
+      cursor: pointer;
+    }
+    #toolbar button {
+      font-size: 13px;
+      background: #01BDF6;
+      color: #182132;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-weight: bold;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #toolbar button:hover { background: #16c8ff; }
+    .toolbar-hint { font-size: 12px; color: #90bee5; margin-left: auto; text-align: right; }
+    #drawflow-wrap { flex: 1; overflow: hidden; padding: 8px; }
     #drawflow {
-      background:#25324a;
-      height: 76vh;
-      width: 98vw;
-      min-height:495px;
-      border-radius:12px;
-      box-shadow:0 6px 16px #1116;
-      overflow: auto;        /* <--- scrollbars enabled */
-      white-space: nowrap;   /* <--- allow wide layout */
-      position:relative;
-    }
-    .drawflow {
-      min-width: 2200px;
-      min-height: 1500px;
-    }
-    .drawflow-node.shape-rect   { border-radius: 7px; background: #ddeaff; }
-    .drawflow-node.shape-trapezoid {
-      clip-path: polygon(18% 0%, 82% 0%, 100% 100%, 0% 100%);
-      width: 170px !important;
-      height: 100px !important;
-      background: #c4e0fa;
+      background: #25324a;
+      height: 100%;
+      width: 100%;
       border-radius: 12px;
+      box-shadow: 0 6px 16px #1116;
+      position: relative;
+      overflow: hidden;
     }
-    .drawflow-node.shape-circle  { border-radius: 50%; width:170px !important; height:170px !important; background: #ffeaef; }
-    .drawflow-node.shape-circle .output-labels-vertlist { position: relative; top: 10px; left: 0; display: flex; flex-direction: column; align-items: center; }
-    .drawflow-node.shape-hex {
-      clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%);
-      width: 105px !important; height: 105px !important;
-      border: 2.5px solid #01BDF6;
-      background: #a1aaff;
-    }
-    .drawflow-node.shape-parallelogram {
-      transform: skew(20deg);
-      width: 110px !important; height: 65px !important; border-radius: 10px;
-      background: #f9dee5;
-    }
-    .drawflow-node.shape-octagon {
-      clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
-      width: 105px !important; height: 105px !important;
-      border: 2px solid #e2a;
-      background: #ce82fc;
-    }
-    .drawflow-node .shape-inner {
-      display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; font-size:1.1rem;
-    }
+    .drawflow { min-width: 3000px; min-height: 2000px; }
+    .drawflow-node { border-radius: 7px; }
+    .drawflow-node[data-node="TrackingNumber"] { border: 2.2px solid #1dace3 !important; background: #1a3a5a; }
+    .drawflow-node[data-node="IVR"]            { border: 2.2px solid #8b97f8 !important; background: #232745; }
+    .drawflow-node[data-node="Queue"]          { border: 2.2px solid #ffb4bb !important; background: #3a2030; }
+    .drawflow-node[data-node="SmartRouter"]    { border: 2.2px solid #ce82fc !important; background: #2d1e40; }
+    .drawflow-node[data-node="ReceivingNumber"]{ border: 2.2px solid #5fd18a !important; background: #1a3028; }
+    .drawflow-node[data-node="Voicemail"]      { border: 2.2px solid #fac6a3 !important; background: #3a2a1a; }
+    .drawflow-node[data-node="NoAnswer"]       { border: 2.2px dashed #e24343 !important; background: #3a1a1a; }
+    .drawflow-node[data-node="EndAction"]      { border: 2.2px solid #5fd18a !important; background: #1a3028; }
     .drawflow-node {
-      max-width: 220px;
-      min-width: 105px;
-      min-height: 140px;
-      padding-bottom: 30px; /* Ensure space at node bottom for output port */
+      min-width: 200px;
+      max-width: 240px;
+      padding: 0 !important;
     }
-    .drawflow-node[data-type="TrackingNumber"]    { border:2.2px solid #1dace3!important; background:#68b6fa22;}
-    .drawflow-node[data-type="IVR"]               { border:2.2px solid #8b97f8!important; background:#d3d8f941;}
-    .drawflow-node[data-type="Queue"]             { border:2.2px solid #ffb4bb!important; background:#f9dee541;}
-    .drawflow-node[data-type="SmartRouter"]       { border:2.2px solid #ce82fc!important; background:#ede2fb;}
-    .drawflow-node[data-type="ReceivingNumber"]   { border:2.2px solid #5fd18a!important; background:#edf9ee;}
-    .drawflow-node[data-type="Voicemail"]         { border:2.2px solid #fac6a3!important; background:#fff4e6;}
-    .drawflow-node[data-type="NoAnswer"]          { border:2.2px dashed #e24343!important; background:#fbe6e6;}
+    .node-inner {
+      padding: 10px 12px 8px 12px;
+    }
+    .node-type-badge {
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #8ecff7;
+      margin-bottom: 4px;
+      opacity: 0.8;
+    }
     .drawflow-node-label {
       font-weight: bold;
-      color: #01BDF6;
-      font-size: 1.04em;
+      color: #ffffff;
+      font-size: 1rem;
       outline: none;
       white-space: normal;
       word-break: break-word;
-      max-width: 160px;
-      display: inline-block;
-      line-height: 1.1;
+      display: block;
+      line-height: 1.3;
+      margin-bottom: 6px;
     }
     .drawflow .output:hover, .drawflow .input:hover { box-shadow: 0 0 7px 2px #01BDF6; }
     .output-slot-list {
       display: flex;
       flex-direction: column;
-      justify-content: flex-start;
-      min-height: 0;
-      margin-bottom: 12px;
       gap: 4px;
+      margin-bottom: 6px;
     }
     .output-slot-row {
       display: flex;
       align-items: center;
-      flex: 1 1 0;
-      height: 24px;
-      margin: 0;
     }
     .output-label-txt {
-      width: 76%;
-      font-size: 0.93em;
-      background: #26344c;
+      width: 100%;
+      font-size: 0.85em;
+      background: #1a2639;
       color: #8ecff7;
       border: 1px solid #01BDF6;
       border-radius: 4px;
-      padding: 2px 4px;
-      margin-right: 2px;
+      padding: 3px 6px;
     }
+    .output-label-txt::placeholder { color: #4a6a8a; }
+    .add-path-btn {
+      background: #5fd18a;
+      color: #182132;
+      border: none;
+      padding: 3px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: bold;
+      margin-top: 2px;
+      align-self: flex-start;
+    }
+    .add-path-btn:hover { background: #7fe0a0; }
     .node-notes-field {
-      margin-top: 16px;
-      width: 98%;
-      min-height: 38px;
-      max-height: 120px;
-      z-index: 2;
-      position: relative;
-      display: block;
-      clear: both;
-      width: 98%;
-      min-height: 38px;
-      max-height: 95px;
-      margin-top: 7px;
-      font-size: 1em;
-      border-radius: 6px;
-      background: #ffffe9;
-      color: #555;
-      padding: 6px 7px;
-      border: 1.7px dashed #98d;
+      width: 100%;
+      min-height: 34px;
+      max-height: 80px;
+      font-size: 0.85em;
+      border-radius: 5px;
+      background: #1a2639;
+      color: #aac4d8;
+      padding: 4px 6px;
+      border: 1px dashed #456;
       resize: vertical;
-      box-sizing: border-box;
       outline: none;
       font-family: inherit;
       line-height: 1.2;
+      margin-top: 4px;
+      display: block;
     }
-    .node-notes-field:focus {
-      border-color: #21bdf6;
-      background: #fffbe4;
+    .node-notes-field:focus { border-color: #21bdf6; }
+    .end-actions-wrap {
+      border-top: 1px solid #2a3d55;
+      padding: 6px 12px;
+      background: rgba(0,0,0,0.15);
+      border-radius: 0 0 6px 6px;
     }
+    .end-actions-btn {
+      background: transparent;
+      color: #01BDF6;
+      border: 1px solid #01BDF6;
+      padding: 3px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: bold;
+      width: 100%;
+      text-align: left;
+    }
+    .end-actions-btn:hover { background: #01BDF620; }
+    .end-actions-btn.has-actions { color: #5fd18a; border-color: #5fd18a; }
+    .end-actions-btn.has-actions:hover { background: #5fd18a20; }
     #nodeMenu {
-      display:none; position:fixed; z-index:99; background:#222d40;
-      border:2px solid #01BDF6; border-radius:7px; color:#fff; min-width:188px; font-size:1rem;
-      box-shadow:0 2px 14px #111a;
+      display: none;
+      position: fixed;
+      z-index: 99;
+      background: #1e2d42;
+      border: 2px solid #01BDF6;
+      border-radius: 8px;
+      color: #fff;
+      min-width: 200px;
+      font-size: 0.95rem;
+      box-shadow: 0 4px 20px #0008;
+      padding: 12px;
     }
-    #nodeMenu label { display:block; margin:14px 14px 7px 14px;}
-    #nodeMenu select { font-size:1rem;width:93%;margin:8px 3%;background:#25324a;color:#01BDF6;border-radius:5px;padding:5px 0;}
-    #nodeMenu button {margin:8px 0 12px 8px;background:#01BDF6;border-radius:6px;font-weight:bold;color:#182132;border:none;padding:7px 32px;cursor:pointer;}
-    #nodeMenu .cancel {background:#e24343;color:#fff;padding:7px 16px;}
-    #endActionsPanel { display:none; position:fixed; z-index:999; left:50%; top:50%; transform:translate(-50%,-50%); background:#25324a; border:2px solid #01BDF6; border-radius:10px; padding:20px; width:450px; max-height:80vh; overflow-y:auto; color:#fff; box-shadow:0 4px 30px rgba(0,0,0,0.5); }
-    #endActionsPanel h3 { margin:0 0 15px 0; color:#01BDF6; border-bottom:1px solid #01BDF6; padding-bottom:10px; }
-    #endActionsPanel .action-row { margin-bottom:12px; padding:10px; background:#1a2639; border-radius:6px; }
-    #endActionsPanel .action-row label { display:block; margin-bottom:6px; color:#8ecff7; font-size:0.9rem; }
-    #endActionsPanel .action-row input, #endActionsPanel .action-row select { width:95%; padding:6px; border-radius:4px; border:1px solid #01BDF6; background:#26344c; color:#fff; }
-    #endActionsPanel .action-type { display:flex; gap:10px; margin-bottom:10px; }
-    #endActionsPanel .action-type label { background:#1a2639; padding:8px 12px; border-radius:5px; cursor:pointer; flex:1; text-align:center; }
-    #endActionsPanel .action-type input[type="radio"] { display:none; }
-    #endActionsPanel .action-type input[type="radio"]:checked + span { color:#01BDF6; font-weight:bold; }
-    #endActionsPanel .action-type label:has(input:checked) { background:#01BDF6; color:#182132; }
-    #endActionsPanel .action-btn { background:#01BDF6; color:#182132; border:none; padding:8px 16px; border-radius:5px; cursor:pointer; font-weight:bold; margin-right:10px; }
-    #endActionsPanel .cancel-btn { background:#e24343; color:#fff; }
-    #endActionsPanel .remove-action { background:#e24343; color:#fff; border:none; padding:4px 8px; border-radius:3px; cursor:pointer; font-size:0.8rem; margin-top:5px; }
-    #endActionsPanel .add-action-btn { background:#5fd18a; color:#182132; border:none; padding:8px 16px; border-radius:5px; cursor:pointer; font-weight:bold; margin-top:10px; }
+    #nodeMenu label { display: block; margin-bottom: 6px; color: #8ecff7; font-size: 0.85rem; }
+    #nodeMenu select { font-size: 0.95rem; width: 100%; margin-bottom: 10px; background: #25324a; color: #01BDF6; border: 1px solid #01BDF6; border-radius: 5px; padding: 5px; }
+    #nodeMenu .menu-btns { display: flex; gap: 8px; }
+    #nodeMenu button { flex: 1; padding: 6px 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    #nodeMenu .add-btn { background: #01BDF6; color: #182132; }
+    #nodeMenu .cancel-btn { background: #e24343; color: #fff; }
+    #endActionsPanel {
+      display: none;
+      position: fixed;
+      z-index: 999;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background: #1e2d42;
+      border: 2px solid #01BDF6;
+      border-radius: 10px;
+      padding: 20px;
+      width: 480px;
+      max-height: 85vh;
+      overflow-y: auto;
+      color: #fff;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.6);
+    }
+    #endActionsPanel h3 { margin: 0 0 15px 0; color: #01BDF6; border-bottom: 1px solid #01BDF633; padding-bottom: 10px; }
+    .action-row { margin-bottom: 12px; padding: 12px; background: #152030; border-radius: 6px; border: 1px solid #2a3d55; }
+    .action-type-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+    .action-type-tabs label {
+      background: #1a2a3a;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      border: 1px solid #2a3d55;
+      transition: all 0.15s;
+    }
+    .action-type-tabs input[type="radio"] { display: none; }
+    .action-type-tabs label:has(input:checked) { background: #01BDF6; color: #182132; border-color: #01BDF6; font-weight: bold; }
+    .action-field { margin-bottom: 8px; }
+    .action-field label { display: block; margin-bottom: 3px; color: #8ecff7; font-size: 0.82rem; }
+    .action-field input, .action-field select, .action-field textarea {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid #2a3d55;
+      background: #1a2639;
+      color: #fff;
+      font-size: 0.88rem;
+    }
+    .action-field input:focus, .action-field select:focus, .action-field textarea:focus {
+      outline: none;
+      border-color: #01BDF6;
+    }
+    .action-field textarea { font-family: monospace; resize: vertical; }
+    .action-field .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .action-field .checkbox-row input[type="checkbox"] { width: auto; }
+    .remove-action-btn { background: #e24343; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.78rem; margin-top: 6px; }
+    .panel-footer { margin-top: 16px; display: flex; gap: 10px; justify-content: flex-end; align-items: center; border-top: 1px solid #2a3d55; padding-top: 14px; }
+    .panel-footer button { padding: 8px 18px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 0.9rem; }
+    .add-action-btn-panel { background: #5fd18a; color: #182132; }
+    .save-actions-btn { background: #01BDF6; color: #182132; }
+    .cancel-actions-btn { background: #2a3d55; color: #fff; }
+    .empty-actions { color: #8ecff7; text-align: center; padding: 20px 0; font-size: 0.9rem; }
   </style>
 </head>
 <body>
   <div id="toolbar">
-    <img src="https://media.ffycdn.net/us/calltrackingmetrics/6CpdkYmzxL6U2TMLMKCo.png?width=180" alt="CTM Routing Planner" style="height:40px;vertical-align:middle;margin-right:20px;">
+    <img src="https://media.ffycdn.net/us/calltrackingmetrics/6CpdkYmzxL6U2TMLMKCo.png?width=180" alt="CTM">
     <label>Node type:</label>
     <select id="nodeType">
       <option value="TrackingNumber">Tracking Number</option>
@@ -174,28 +252,35 @@
       <option value="NoAnswer">No Answer Branch</option>
       <option value="EndAction">End Action</option>
     </select>
-    <button onclick="addNodeStandalone()">+ Add Standalone Node</button>
+    <button onclick="addNodeStandalone()">+ Add Node</button>
     <button onclick="saveFlow()">💾 Save</button>
     <button onclick="loadFlow()">📂 Load</button>
     <input type="file" id="fileInput" style="display:none;" accept="application/json" onchange="handleFile(event)">
-    <span style="font-size:13px;color:#90bee5;">Drag from outputs, or <b>click output port</b> to branch/add and connect a new node, shapes auto by step; scrollbars for large flows.</span>
+    <span class="toolbar-hint">Click an output port to branch and connect a new node</span>
   </div>
-  <div id="drawflow"></div>
+  <div id="drawflow-wrap">
+    <div id="drawflow"></div>
+  </div>
+
   <div id="nodeMenu">
-    <label for="nodeMenuSelect">Select step type:</label>
+    <label>Add connected node:</label>
     <select id="nodeMenuSelect"></select>
-    <button id="nodeMenuAddBtn">Add</button>
-    <button class="cancel" id="nodeMenuCancelBtn">Cancel</button>
-  </div>
-  <div id="endActionsPanel">
-    <h3>End Actions - Post-Call Automation</h3>
-    <div id="endActionsList"></div>
-    <button class="add-action-btn" onclick="addEndAction()">+ Add End Action</button>
-    <div style="margin-top:15px;text-align:right;">
-      <button class="action-btn" onclick="saveEndActions()">Save</button>
-      <button class="action-btn cancel-btn" onclick="closeEndActionsPanel()">Cancel</button>
+    <div class="menu-btns">
+      <button class="add-btn" id="nodeMenuAddBtn">Add</button>
+      <button class="cancel-btn" id="nodeMenuCancelBtn">Cancel</button>
     </div>
   </div>
+
+  <div id="endActionsPanel">
+    <h3>⚡ End Actions — Post-Call Automation</h3>
+    <div id="endActionsList"></div>
+    <div class="panel-footer">
+      <button class="add-action-btn-panel" onclick="addEndAction()">+ Add Action</button>
+      <button class="save-actions-btn" onclick="saveEndActions()">Save</button>
+      <button class="cancel-actions-btn" onclick="closeEndActionsPanel()">Cancel</button>
+    </div>
+  </div>
+
 <script src="drawflow.min.js"></script>
 <script>
   const labelMap = {
@@ -208,20 +293,7 @@
     NoAnswer: "No Answer Branch",
     EndAction: "End Action"
   };
-  // Only use rectangles for node shape
-  function getShapeClassByDepth(depth) {
-    return "shape-rect";
-  }
-  // Palette for color by depth
-  const COLOR_PALETTE = [
-    "#4398EC", // bold blue
-    "#FC635D", // strong red
-    "#FED13A", // strong yellow
-    "#42D57B", // strong green
-    "#A259DB", // strong violet
-    "#EF8649", // strong orange
-    "#41C6EF"  // strong cyan
-  ];
+
   const NODE_TYPES = [
     { value: "IVR", label: "IVR Menu" },
     { value: "Queue", label: "Queue" },
@@ -231,423 +303,504 @@
     { value: "NoAnswer", label: "No Answer Branch" },
     { value: "EndAction", label: "End Action" }
   ];
+
   const editor = new Drawflow(document.getElementById('drawflow'));
   editor.reroute = true;
   editor.start();
-  document.getElementById('drawflow').style.height = (window.innerHeight-80) + 'px';
-  // Keyboard node deletion support
+
+  // Keyboard deletion
   document.addEventListener('keydown', function(e) {
-    // Only delete if a node is selected and focus is not in text editing fields
     if ((e.key === "Delete" || e.key === "Backspace") &&
         document.activeElement.tagName !== 'INPUT' &&
         document.activeElement.tagName !== 'TEXTAREA') {
-      const selected = editor.getSelectedNodes();
-      if(selected && selected.length > 0) {
+      const selected = editor.getSelectedNodes ? editor.getSelectedNodes() : [];
+      if (selected && selected.length > 0) {
         selected.forEach(id => editor.removeNodeId(id));
       }
     }
   });
+
   let nodeCount = {
-    TrackingNumber:1,
-    IVR:1,
-    Queue:1,
-    SmartRouter:1,
-    ReceivingNumber:1,
-    Voicemail:1,
-    NoAnswer:1,
-    EndAction:1
+    TrackingNumber:1, IVR:1, Queue:1, SmartRouter:1,
+    ReceivingNumber:1, Voicemail:1, NoAnswer:1, EndAction:1
   };
+
+  function buildNodeHTML(type, label, outputLabels, notesValue) {
+    let outputInputsHTML = '';
+    if (type === 'IVR' || type === 'SmartRouter') {
+      const labels = outputLabels || [];
+      const placeholder = type === 'IVR' ? 'Keypress' : 'Condition';
+      const addBtn = type === 'IVR'
+        ? `<button class="add-path-btn" onclick="event.stopPropagation();window.addIVROutput(this)">+ Add Path</button>`
+        : '';
+      outputInputsHTML = `
+        <div class="output-slot-list">
+          ${labels.map((v, i) => `
+            <div class="output-slot-row">
+              <input type="text" class="output-label-txt"
+                value="${(v||'').replace(/"/g,'&quot;')}"
+                oninput="window.updateOutputLabel(this,${i},this.value)"
+                placeholder="${placeholder} ${i+1}">
+            </div>`).join('')}
+          ${addBtn}
+        </div>`;
+    }
+    const notes = (notesValue || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<div class="node-inner" data-node-type="${type}">
+      <div class="node-type-badge">${labelMap[type] || type}</div>
+      <span class="drawflow-node-label" ondblclick="window.editLabel(this)">${label}</span>
+      ${outputInputsHTML}
+      <textarea class="node-notes-field" placeholder="Notes..." rows="2"
+        oninput="window.saveNodeNotes(this)">${notes}</textarea>
+    </div>
+    <div class="end-actions-wrap">
+      <button class="end-actions-btn" onclick="event.stopPropagation();window.showEndActionsPanel(parseInt(this.closest('.drawflow-node').id.replace('node-','')))">⚡ End Actions</button>
+    </div>`;
+  }
 
   function addNodeStandalone() {
     const type = document.getElementById('nodeType').value;
-    addNodeWithDepth(type, null, null); 
+    addNodeWithDepth(type, null, null);
   }
-  function addNodeWithDepth(type, parentOutNodeId, fromOutputIdx, forcedOutputs = null) {
+
+  function addNodeWithDepth(type, parentId, fromOutputIdx) {
     const defaultName = labelMap[type] + ' ' + nodeCount[type]++;
     let outputs = 1, inputs = 1;
-    let outputLabels = [];
-    if(type === 'TrackingNumber') { outputs = 1; inputs = 0; }
-    else if(type === 'IVR') { outputs = forcedOutputs || 3; inputs = 1; }
-    else if(type === 'SmartRouter') { outputs = 3; inputs = 1; }
-    else if(type === 'NoAnswer') { outputs = 1; inputs = 1; }
-    else if(type === 'EndAction') { outputs = 0; inputs = 1; }
-    // DO NOT add extra outputs for notes (fully remove any lingering notes logic)
+    if (type === 'TrackingNumber') { outputs = 1; inputs = 0; }
+    else if (type === 'IVR')       { outputs = 3; inputs = 1; }
+    else if (type === 'SmartRouter'){ outputs = 3; inputs = 1; }
+    else if (type === 'NoAnswer')  { outputs = 1; inputs = 1; }
+    else if (type === 'EndAction') { outputs = 0; inputs = 1; }
 
-    // generate default output labels (used only if not restoring from data)
-    for(let i=0;i<outputs;i++) outputLabels.push('');
+    const outputLabels = Array(outputs).fill('');
+    let x = 200, y = 120;
     let depth = 1;
-    let x = 300, y = 120;
-    if (parentOutNodeId !== null) {
+
+    if (parentId !== null) {
       try {
-        const parentNode = editor.getNodeFromId(parentOutNodeId);
+        const parentNode = editor.getNodeFromId(parentId);
         depth = (parentNode.data.depth || 1) + 1;
-        x = parentNode.pos_x + 220;
-        y = parentNode.pos_y + (depth * 32);
+        x = parentNode.pos_x + 260;
+        y = parentNode.pos_y + (fromOutputIdx - 1) * 80;
       } catch { depth = 2; }
     }
-    let shapeClass = getShapeClassByDepth(depth);
 
-    // gather user-specified labels if reloading node
-    let data = { type: String(type), label: String(defaultName), depth };
-    if(parentOutNodeId==null) data.outputLabels = [...outputLabels];
-    // If reusing node (i.e., Drawflow reload), load existing output labels:
-    if(fromOutputIdx && parentOutNodeId) {
-      try {
-        const parentNode = editor.getNodeFromId(parentOutNodeId);
-        if(parentNode.data && parentNode.data.outputLabels) data.outputLabels = [...parentNode.data.outputLabels];
-      } catch {}
-    }
+    const data = { type: String(type), label: String(defaultName), depth, outputLabels: [...outputLabels] };
+    const html = buildNodeHTML(type, defaultName, outputLabels, '');
 
-    // main node content with editable output labels for multi-output nodes
-
-    let outputInputsHTML = '';
-    if(type === 'IVR' || type === 'SmartRouter') {
-      let restored = [];
-      if(data.outputLabels && Array.isArray(data.outputLabels))
-        restored = data.outputLabels;
-      while(restored.length < outputs) restored.push('');
-      const getPlaceholder = (type, i) =>
-        type === 'IVR' ? `Keypress ${i+1}` :
-        `If ${i+1} is true then route here`;
-      const addBtn = type === 'IVR' ? `<button style="background:#5fd18a;color:#182132;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.8rem;margin-top:4px;" onclick="window.addIVROutput(this)">+ Add Path</button>` : '';
-      outputInputsHTML = `
-        <div class='output-slot-list'>
-          ${restored.map((v, i) => `
-            <div class='output-slot-row'>
-              <input type='text' class='output-label-txt'
-                value="${v}"
-                onchange="window.updateOutputLabel(this, '${type}', ${i}, this.value, this.closest('.drawflow-node').dataset.id)"
-                placeholder="${getPlaceholder(type, i)}">
-            </div>`).join('')}
-          ${addBtn}
-        </div>
-      `;
-    } else {
-      outputInputsHTML = '';
-    }
-    // Add notes textarea below output labels
-    let notesValue = (data.notesValue !== undefined) ? data.notesValue : '';
-    let notesHTML = `<textarea class="node-notes-field" placeholder="Enter notes or description here..." oninput="window.saveNodeNotes(this, this.closest('.drawflow-node').dataset.id)" rows="2">${notesValue}</textarea>`;
-    let bgColor = COLOR_PALETTE[(depth - 1) % COLOR_PALETTE.length];
-    const styleStr = `background:${bgColor}; height:auto;`;
-    const html = `<div data-type="${type}">
-      <div class="shape-inner"><span class="drawflow-node-label" ondblclick="editLabel(this)">${defaultName}</span></div>
-      ${outputInputsHTML}
-      ${notesHTML}
-    </div>`;
     const newNodeId = editor.addNode(
-      String(type),
-      inputs,
-      outputs,
-      x,
-      y,
-      shapeClass,
-      data,
-      html
+      String(type), inputs, outputs, x, y,
+      '', data, html
     );
+
+    // Set node data-node attribute for CSS targeting
     setTimeout(function() {
-      let nodeElem = document.getElementById('node-' + newNodeId);
-      if (nodeElem) {
-        nodeElem.style.background = bgColor;
-        const hasEndActions = (data.endActions && data.endActions.length > 0) ? '✓' : '';
-        const endActionsDiv = document.createElement('div');
-        endActionsDiv.style.cssText = 'margin-top:8px;border-top:1px dashed #01BDF6;padding-top:6px;';
-        endActionsDiv.innerHTML = `<button class="end-actions-btn" onclick="event.stopPropagation();window.showEndActionsPanel(${newNodeId})">⚡ End Actions ${hasEndActions}</button>`;
-        nodeElem.querySelector('.shape-inner').parentNode.appendChild(endActionsDiv);
-      }
-    }, 50);
-    if (parentOutNodeId !== null && fromOutputIdx && Number(fromOutputIdx) > 0) {
-      editor.addConnection(parentOutNodeId, newNodeId, "output_" + fromOutputIdx, "input_1");
+      const el = document.getElementById('node-' + newNodeId);
+      if (el) el.setAttribute('data-node', type);
+    }, 10);
+
+    if (parentId !== null && fromOutputIdx) {
+      editor.addConnection(parentId, newNodeId, 'output_' + fromOutputIdx, 'input_1');
     }
+
+    return newNodeId;
   }
 
-  window.saveNodeNotes = function(textarea, nodeId) {
+  // Save notes directly on the node data via DOM traversal
+  window.saveNodeNotes = function(textarea) {
     try {
+      const nodeDiv = textarea.closest('.drawflow-node');
+      const nodeId = parseInt(nodeDiv.id.replace("node-",""));
       const node = editor.getNodeFromId(nodeId);
       node.data.notesValue = textarea.value;
+      editor.updateNodeDataFromId(nodeId, node.data);
     } catch {}
-  }
-
-  // Handler for output label edits on-the-fly
-  window.updateOutputLabel = function(inputElem, type, idx, value, nodeId) {
-    try {
-      const node = editor.getNodeFromId(nodeId);
-      if(!node.data.outputLabels) node.data.outputLabels=[];
-      node.data.outputLabels[idx] = value;
-      const outputs = node.outputs ? Object.keys(node.outputs).length : 3;
-      const addBtn = type === 'IVR' ? `<button style="background:#5fd18a;color:#182132;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.8rem;margin-top:4px;" onclick="window.addIVROutput(this)">+ Add Path</button>` : '';
-      let html = `<div data-type="${type}" style="height:auto">
-        <div class="shape-inner"><span class="drawflow-node-label" ondblclick="editLabel(this)">${node.data.label}</span></div>
-        <div style=\"margin-top:5px;\">
-          ${node.data.outputLabels.map((v, i) => `<input type='text' style=\"width:90%;font-size:0.93em;margin-bottom:2px;background:#26344c;color:#8ecff7;border:1px solid #01BDF6;border-radius:4px;padding:2px 4px;\" value=\"${v||''}\" onchange=\"window.updateOutputLabel(this, '${type}', ${i}, this.value, this.parentNode.parentNode.parentNode.parentNode.dataset.id)\" placeholder=\"Keypress ${i+1}\">`).join('')}
-          ${addBtn}
-        </div>
-      </div>`;
-      node.html = html;
-      editor.updateNodeHtmlFromId(nodeId, html);
-    } catch {}
-  }
-  // Double-click label to edit inline
-  window.editLabel = function(spanElem) {
-    let old = spanElem.textContent;
-    let inp = document.createElement('input');
-    inp.type = 'text'; inp.value = old; inp.className='drawflow-node-label';
-    inp.onblur = inp.onkeydown = function(e) {
-      if(e.type==='blur' || (e.type==='keydown'&&e.key==='Enter')) {
-        spanElem.textContent = inp.value||old;
-        spanElem.style.display="inline";
-        inp.remove();
-      }
-    };
-    spanElem.parentNode.insertBefore(inp, spanElem);
-    spanElem.style.display="none";
-    inp.focus();
-    inp.setSelectionRange(0, old.length);
   };
+
+  // Update output label — just save to data, no re-render needed
+  window.updateOutputLabel = function(inputElem, idx, value) {
+    try {
+      const nodeDiv = inputElem.closest('.drawflow-node');
+      const nodeId = parseInt(nodeDiv.id.replace("node-",""));
+      const node = editor.getNodeFromId(nodeId);
+      if (!node.data.outputLabels) node.data.outputLabels = [];
+      node.data.outputLabels[idx] = value;
+      editor.updateNodeDataFromId(nodeId, node.data);
+    } catch {}
+  };
+
+  // Add a new IVR output port + input row
   window.addIVROutput = function(btn) {
     const nodeDiv = btn.closest('.drawflow-node');
-    const nodeId = parseInt(nodeDiv.dataset.id);
+    const nodeId = parseInt(nodeDiv.id.replace("node-",""));
     const node = editor.getNodeFromId(nodeId);
-    if(!node || !node.data) return;
-    const currentOutputs = node.outputs ? Object.keys(node.outputs).length : 3;
-    const newOutputs = currentOutputs + 1;
-    if(!node.data.outputLabels) node.data.outputLabels = [];
+    if (!node || !node.data) return;
+
+    // Add actual output port in Drawflow
+    editor.addNodeOutput(nodeId);
+
+    // Track in data
+    if (!node.data.outputLabels) node.data.outputLabels = [];
+    const newIdx = node.data.outputLabels.length;
     node.data.outputLabels.push('');
-    node.data.outputCount = newOutputs;
-    const newOutputKey = 'output_' + newOutputs;
-    node.outputs[newOutputKey] = { connections: [] };
-    node.html = nodeDiv.innerHTML;
-    editor.updateNodeHtmlFromId(nodeId, nodeDiv.innerHTML);
+    editor.updateNodeDataFromId(nodeId, node.data);
+
+    // Add new row to DOM before the button
+    const slotList = nodeDiv.querySelector('.output-slot-list');
+    const newRow = document.createElement('div');
+    newRow.className = 'output-slot-row';
+    newRow.innerHTML = `<input type="text" class="output-label-txt" value=""
+      oninput="window.updateOutputLabel(this,${newIdx},this.value)"
+      placeholder="Keypress ${newIdx + 1}">`;
+    slotList.insertBefore(newRow, btn);
+
+    // Update connection lines
+    editor.updateConnectionNodes('node-' + nodeId);
   };
-  function getName() {
-    let d = new Date();
-    return "ctm_routing_"+d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate()+"_"+d.getHours()+"-"+d.getMinutes()+".json";
+
+  // Double-click label to edit inline
+  window.editLabel = function(spanElem) {
+    const old = spanElem.textContent;
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = old;
+    inp.className = 'drawflow-node-label';
+    inp.style.width = '100%';
+    function finish() {
+      const newVal = inp.value.trim() || old;
+      spanElem.textContent = newVal;
+      spanElem.style.display = '';
+      inp.remove();
+      try {
+        const nodeDiv = spanElem.closest('.drawflow-node');
+        const nodeId = parseInt(nodeDiv.id.replace("node-",""));
+        const node = editor.getNodeFromId(nodeId);
+        node.data.label = newVal;
+        editor.updateNodeDataFromId(nodeId, node.data);
+      } catch {}
+    }
+    inp.onblur = finish;
+    inp.onkeydown = function(e) { if (e.key === 'Enter') { e.preventDefault(); finish(); } };
+    spanElem.parentNode.insertBefore(inp, spanElem);
+    spanElem.style.display = 'none';
+    inp.focus();
+    inp.select();
+  };
+
+  // --- Node context menu (click output port to branch) ---
+  function showNodeMenu(x, y, parentId, outIndex) {
+    const menu = document.getElementById('nodeMenu');
+    const sel = document.getElementById('nodeMenuSelect');
+    sel.innerHTML = NODE_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('');
+    menu.style.left = (x + 8) + 'px';
+    menu.style.top = (y - 10) + 'px';
+    menu.style.display = 'block';
+    menu._parentId = parentId;
+    menu._outIndex = outIndex;
+    sel.focus();
   }
+
+  function hideNodeMenu() {
+    const menu = document.getElementById('nodeMenu');
+    menu.style.display = 'none';
+    menu._parentId = undefined;
+    menu._outIndex = undefined;
+  }
+
+  document.getElementById('nodeMenuAddBtn').onclick = function() {
+    const menu = document.getElementById('nodeMenu');
+    const type = document.getElementById('nodeMenuSelect').value;
+    if (menu._parentId && type) {
+      addNodeWithDepth(type, Number(menu._parentId), Number(menu._outIndex));
+    }
+    hideNodeMenu();
+  };
+  document.getElementById('nodeMenuCancelBtn').onclick = hideNodeMenu;
+
+  editor.precanvas.addEventListener('click', function(e) {
+    if (e.target.classList.contains('output')) {
+      const parentNodeDiv = e.target.closest('.drawflow-node');
+      const parentId = parseInt(parentNodeDiv.id.replace('node-', ''));
+      const outputs = Array.from(parentNodeDiv.querySelectorAll('.output'));
+      const outIndex = outputs.indexOf(e.target) + 1;
+      const rect = e.target.getBoundingClientRect();
+      showNodeMenu(rect.right, rect.top, parentId, outIndex);
+      e.stopPropagation();
+    }
+  });
+
+  document.body.addEventListener('mousedown', function(e) {
+    const menu = document.getElementById('nodeMenu');
+    if (menu.style.display === 'block' && !menu.contains(e.target)) hideNodeMenu();
+  });
+
+  // --- Grid snap ---
+  function snapAllNodesToGrid() {
+    const grid = 32;
+    const data = editor.drawflow.drawflow.Home.data;
+    Object.values(data).forEach(function(n) {
+      const node = document.getElementById('node-' + n.id);
+      if (node) {
+        const l = Math.round(parseInt(node.style.left) / grid) * grid;
+        const t = Math.round(parseInt(node.style.top) / grid) * grid;
+        node.style.left = l + 'px';
+        node.style.top = t + 'px';
+        n.pos_x = l;
+        n.pos_y = t;
+      }
+    });
+  }
+  editor.on('nodeMoved', function() { setTimeout(snapAllNodesToGrid, 10); });
+
+  // Re-apply data-node attribute after import (for CSS)
+  editor.on('import', function() {
+    setTimeout(function() {
+      snapAllNodesToGrid();
+      const data = editor.drawflow.drawflow.Home.data;
+      Object.values(data).forEach(function(n) {
+        const el = document.getElementById('node-' + n.id);
+        if (el && n.data && n.data.type) {
+          el.setAttribute('data-node', n.data.type);
+        }
+      });
+    }, 80);
+  });
+
+  // --- Save / Load ---
   function saveFlow() {
     const flow = editor.export();
-    const blob = new Blob([JSON.stringify(flow,null,2)], {type: "application/json"});
-    const a = document.createElement("a");
+    const blob = new Blob([JSON.stringify(flow, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = getName();
+    const d = new Date();
+    a.download = `ctm_routing_${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}_${d.getHours()}-${d.getMinutes()}.json`;
     document.body.appendChild(a);
-    a.click(); document.body.removeChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
+
   function loadFlow() {
     document.getElementById('fileInput').value = null;
     document.getElementById('fileInput').click();
   }
+
   function handleFile(evt) {
     const file = evt.target.files[0];
-    if(!file) return;
+    if (!file) return;
     const reader = new FileReader();
     reader.onload = function(e) {
       try {
         const obj = JSON.parse(e.target.result);
-        for (let k in obj.drawflow.Home.data) {
-          let n = obj.drawflow.Home.data[k];
+        // Ensure all node names are strings (Drawflow requirement)
+        for (const k in obj.drawflow.Home.data) {
+          const n = obj.drawflow.Home.data[k];
           if (typeof n.name !== 'string') n.name = String(n.name || '');
         }
         editor.clear();
         editor.import(obj);
       } catch (ex) {
-        alert("Failed to load: "+ex);
+        alert('Failed to load: ' + ex);
       }
-    }
+    };
     reader.readAsText(file);
   }
-  function showNodeMenu(x, y, parentId, outIndex) {
-    const menu = document.getElementById('nodeMenu');
-    const sel = document.getElementById('nodeMenuSelect');
-    // Look up the node data to determine type and notes output index
-    let n = editor.getNodeFromId(parentId);
-    if (n && typeof n.data === 'object' && typeof n.data.notesOutputIdx === 'number' && Number(outIndex)-1 === n.data.notesOutputIdx) {
-      sel.innerHTML = '<option value="Notes">Notes</option>';
-    } else {
-      sel.innerHTML = NODE_TYPES.filter(t => t.value !== 'Notes').map(t=>`<option value="${t.value}">${t.label}</option>`).join('');
-    }
-    menu.style.left = (x+12) + 'px';
-    menu.style.top = (y-10) + 'px';
-    menu.style.display = 'block';
-    menu.parentId = parentId;
-    menu.outIndex = outIndex;
-    sel.focus();
-  }
-  function hideNodeMenu() {
-    const menu = document.getElementById('nodeMenu');
-    menu.style.display = 'none';
-    menu.parentId = undefined;
-    menu.outIndex = undefined;
-  }
-  document.getElementById('nodeMenuAddBtn').onclick = function() {
-    const menu = document.getElementById('nodeMenu');
-    const type = document.getElementById('nodeMenuSelect').value;
-    if(menu.parentId && type) {
-      addNodeWithDepth(type, Number(menu.parentId), Number(menu.outIndex));
-    }
-    hideNodeMenu();
-  };
-  document.getElementById('nodeMenuCancelBtn').onclick = hideNodeMenu;
-  editor.precanvas.addEventListener("click", function(e) {
-    if (e.target.classList.contains("output")) {
-      const parentNodeDiv = e.target.closest(".drawflow-node");
-      const parentId = parseInt(parentNodeDiv.id.replace("node-", ""));
-      const outputsOnThisNode = Array.from(parentNodeDiv.querySelectorAll('.output'));
-      const outIndex = outputsOnThisNode.indexOf(e.target) + 1;
-      let rect = e.target.getBoundingClientRect();
-      showNodeMenu(rect.right, rect.top, parentId, outIndex);
-      e.stopPropagation();
-    }
-  });
-  document.body.addEventListener("mousedown", function(e) {
-    const menu = document.getElementById('nodeMenu');
-    if(menu.style.display=="block" && !menu.contains(e.target)) hideNodeMenu();
-  });
-  function snapAllNodesToGrid() {
-    const grid = 32;
-    Object.values(editor.drawflow.drawflow.Home.data).forEach(function(n) {
-      let node = document.getElementById('node-' + n.id);
-      if (node) {
-        let l = parseInt(node.style.left), t = parseInt(node.style.top);
-        node.style.left = (Math.round(l / grid) * grid) + 'px';
-        node.style.top  = (Math.round(t / grid) * grid) + 'px';
-        n.pos_x = parseInt(node.style.left);
-        n.pos_y = parseInt(node.style.top);
-      }
-    });
-  }
-  editor.on('nodeMoved', function() { setTimeout(snapAllNodesToGrid, 10); });
-  editor.on('import', function() { setTimeout(snapAllNodesToGrid, 100); });
 
-  // End Actions functionality
+  // --- End Actions ---
   let currentEndActionsNodeId = null;
+  // Snapshot of actions at panel open (for cancel)
+  let endActionsSnapshot = null;
+
   const END_ACTION_TYPES = [
-    { value: 'trigger', label: 'Trigger', icon: '⚡' },
-    { value: 'webhook', label: 'Webhook', icon: '🌐' },
-    { value: 'google_conversion', label: 'Google Ad Conversion', icon: '📊' },
-    { value: 'email_notification', label: 'Email Notification', icon: '📧' }
+    { value: 'trigger',            label: 'Trigger',              icon: '⚡' },
+    { value: 'webhook',            label: 'Webhook',              icon: '🌐' },
+    { value: 'google_conversion',  label: 'Google Conversion',    icon: '📊' },
+    { value: 'email_notification', label: 'Email Notification',   icon: '📧' }
   ];
 
   window.showEndActionsPanel = function(nodeId) {
     currentEndActionsNodeId = nodeId;
     const node = editor.getNodeFromId(nodeId);
-    const actions = node.data.endActions || [];
-    renderEndActionsList(actions);
+    endActionsSnapshot = JSON.parse(JSON.stringify(node.data.endActions || []));
+    renderEndActionsList(node.data.endActions || []);
     document.getElementById('endActionsPanel').style.display = 'block';
   };
 
   window.closeEndActionsPanel = function() {
+    // Restore snapshot on cancel
+    if (currentEndActionsNodeId !== null && endActionsSnapshot !== null) {
+      const node = editor.getNodeFromId(currentEndActionsNodeId);
+      if (node) {
+        node.data.endActions = endActionsSnapshot;
+        editor.updateNodeDataFromId(currentEndActionsNodeId, node.data);
+      }
+    }
+    document.getElementById('endActionsPanel').style.display = 'none';
+    currentEndActionsNodeId = null;
+    endActionsSnapshot = null;
+  };
+
+  window.saveEndActions = function() {
+    if (currentEndActionsNodeId !== null) {
+      const node = editor.getNodeFromId(currentEndActionsNodeId);
+      const hasActions = node && node.data && node.data.endActions && node.data.endActions.length > 0;
+      // Update the button appearance on the node
+      const nodeElem = document.getElementById('node-' + currentEndActionsNodeId);
+      if (nodeElem) {
+        const btn = nodeElem.querySelector('.end-actions-btn');
+        if (btn) {
+          btn.textContent = hasActions ? '⚡ End Actions ✓' : '⚡ End Actions';
+          btn.classList.toggle('has-actions', hasActions);
+        }
+      }
+    }
+    endActionsSnapshot = null; // Don't restore on close
     document.getElementById('endActionsPanel').style.display = 'none';
     currentEndActionsNodeId = null;
   };
 
+  function getNodeEndActions() {
+    if (!currentEndActionsNodeId) return [];
+    const node = editor.getNodeFromId(currentEndActionsNodeId);
+    return (node && node.data && node.data.endActions) ? node.data.endActions : [];
+  }
+
+  function setNodeEndActions(actions) {
+    if (!currentEndActionsNodeId) return;
+    const node = editor.getNodeFromId(currentEndActionsNodeId);
+    if (!node) return;
+    node.data.endActions = actions;
+    editor.updateNodeDataFromId(currentEndActionsNodeId, node.data);
+  }
+
   window.renderEndActionsList = function(actions) {
     const container = document.getElementById('endActionsList');
-    if(actions.length === 0) {
-      container.innerHTML = '<p style="color:#8ecff7;text-align:center;">No end actions configured. Click "Add End Action" to add post-call automation.</p>';
+    if (!actions || actions.length === 0) {
+      container.innerHTML = '<div class="empty-actions">No end actions configured.<br>Click "+ Add Action" to add post-call automation.</div>';
       return;
     }
     container.innerHTML = actions.map((action, idx) => `
       <div class="action-row" data-idx="${idx}">
-        <div class="action-type">
+        <div class="action-type-tabs">
           ${END_ACTION_TYPES.map(t => `
             <label>
-              <input type="radio" name="actionType_${idx}" value="${t.value}" ${action.type === t.value ? 'checked' : ''} onchange="updateActionType(${idx}, this.value)">
-              <span>${t.icon} ${t.label}</span>
-            </label>
-          `).join('')}
+              <input type="radio" name="actionType_${idx}" value="${t.value}"
+                ${action.type === t.value ? 'checked' : ''}
+                onchange="window.updateActionType(${idx}, this.value)">
+              ${t.icon} ${t.label}
+            </label>`).join('')}
         </div>
         ${getActionFields(action.type, idx, action)}
-        <button class="remove-action" onclick="removeEndAction(${idx})">Remove</button>
+        <button class="remove-action-btn" onclick="window.removeEndAction(${idx})">✕ Remove</button>
       </div>
     `).join('');
   };
 
   window.getActionFields = function(type, idx, action) {
-    switch(type) {
+    switch (type) {
       case 'trigger':
         return `
-          <label>Trigger Action:</label>
-          <select onchange="updateActionField(${idx}, 'trigger_action', this.value)">
-            <option value="">Select action...</option>
-            <option value="tag" ${action.trigger_action === 'tag' ? 'selected' : ''}>Add Tag</option>
-            <option value="remove_tag" ${action.trigger_action === 'remove_tag' ? 'selected' : ''}>Remove Tag</option>
-            <option value="set_schedule" ${action.trigger_action === 'set_schedule' ? 'selected' : ''}>Set Schedule</option>
-            <option value="transfer" ${action.trigger_action === 'transfer' ? 'selected' : ''}>Transfer Call</option>
-          </select>
-          <label>Tag ID / Value:</label>
-          <input type="text" value="${action.tag_value || ''}" onchange="updateActionField(${idx}, 'tag_value', this.value)" placeholder="Enter tag ID or value">
-        `;
+          <div class="action-field">
+            <label>Trigger Action</label>
+            <select onchange="window.updateActionField(${idx},'trigger_action',this.value)">
+              <option value="">Select action...</option>
+              <option value="tag"          ${action.trigger_action==='tag'          ? 'selected':''}>Add Tag</option>
+              <option value="remove_tag"   ${action.trigger_action==='remove_tag'   ? 'selected':''}>Remove Tag</option>
+              <option value="set_schedule" ${action.trigger_action==='set_schedule' ? 'selected':''}>Set Schedule</option>
+              <option value="transfer"     ${action.trigger_action==='transfer'     ? 'selected':''}>Transfer Call</option>
+            </select>
+          </div>
+          <div class="action-field">
+            <label>Tag ID / Value</label>
+            <input type="text" value="${action.tag_value||''}"
+              oninput="window.updateActionField(${idx},'tag_value',this.value)"
+              placeholder="Enter tag ID or value">
+          </div>`;
       case 'webhook':
         return `
-          <label>Webhook URL (POST):</label>
-          <input type="text" value="${action.webhook_url || ''}" onchange="updateActionField(${idx}, 'webhook_url', this.value)" placeholder="https://example.com/webhook">
-          <label>Custom Body (Mustache format):</label>
-          <textarea rows="4" style="width:95%;padding:6px;border-radius:4px;border:1px solid #01BDF6;background:#26344c;color:#fff;font-family:monospace;" onchange="updateActionField(${idx}, 'webhook_body', this.value)" placeholder='{ "caller_name": "{{caller_name}}", "phone": "{{caller_number}}" }'>${action.webhook_body || ''}</textarea>
-          <label>Notes:</label>
-          <input type="text" value="${action.webhook_notes || ''}" onchange="updateActionField(${idx}, 'webhook_notes', this.value)" placeholder="Internal notes about this webhook">
-        `;
+          <div class="action-field">
+            <label>Webhook URL (POST)</label>
+            <input type="text" value="${action.webhook_url||''}"
+              oninput="window.updateActionField(${idx},'webhook_url',this.value)"
+              placeholder="https://example.com/webhook">
+          </div>
+          <div class="action-field">
+            <label>Custom Body (Mustache format)</label>
+            <textarea rows="3" oninput="window.updateActionField(${idx},'webhook_body',this.value)"
+              placeholder='{"caller":"{{caller_number}}"}'>${action.webhook_body||''}</textarea>
+          </div>
+          <div class="action-field">
+            <label>Notes</label>
+            <input type="text" value="${action.webhook_notes||''}"
+              oninput="window.updateActionField(${idx},'webhook_notes',this.value)"
+              placeholder="Internal notes about this webhook">
+          </div>`;
       case 'google_conversion':
         return `
-          <label>Conversion Label:</label>
-          <input type="text" value="${action.conversion_label || ''}" onchange="updateActionField(${idx}, 'conversion_label', this.value)" placeholder="Conversion label from Google Ads">
-          <label>Conversion Value (optional):</label>
-          <input type="number" value="${action.conversion_value || ''}" onchange="updateActionField(${idx}, 'conversion_value', this.value)" placeholder="0.00">
-        `;
+          <div class="action-field">
+            <label>Conversion Label</label>
+            <input type="text" value="${action.conversion_label||''}"
+              oninput="window.updateActionField(${idx},'conversion_label',this.value)"
+              placeholder="Conversion label from Google Ads">
+          </div>
+          <div class="action-field">
+            <label>Conversion Value (optional)</label>
+            <input type="number" value="${action.conversion_value||''}"
+              oninput="window.updateActionField(${idx},'conversion_value',this.value)"
+              placeholder="0.00">
+          </div>`;
       case 'email_notification':
         return `
-          <label>Recipients (comma separated):</label>
-          <input type="text" value="${action.recipients || ''}" onchange="updateActionField(${idx}, 'recipients', this.value)" placeholder="email@example.com">
-          <label>Subject:</label>
-          <input type="text" value="${action.subject || ''}" onchange="updateActionField(${idx}, 'subject', this.value)" placeholder="Call notification subject">
-          <label>Include Call Details:</label>
-          <input type="checkbox" ${action.include_details ? 'checked' : ''} onchange="updateActionField(${idx}, 'include_details', this.checked)"> Include caller info, duration, recording
-        `;
+          <div class="action-field">
+            <label>Recipients (comma-separated)</label>
+            <input type="text" value="${action.recipients||''}"
+              oninput="window.updateActionField(${idx},'recipients',this.value)"
+              placeholder="email@example.com, other@example.com">
+          </div>
+          <div class="action-field">
+            <label>Subject</label>
+            <input type="text" value="${action.subject||''}"
+              oninput="window.updateActionField(${idx},'subject',this.value)"
+              placeholder="Call notification subject">
+          </div>
+          <div class="action-field">
+            <div class="checkbox-row">
+              <input type="checkbox" id="inc_${idx}" ${action.include_details ? 'checked' : ''}
+                onchange="window.updateActionField(${idx},'include_details',this.checked)">
+              <label for="inc_${idx}" style="margin:0;color:#ccc;">Include caller info, duration, and recording</label>
+            </div>
+          </div>`;
       default:
-        return '<p>Select an action type</p>';
+        return '<p style="color:#8ecff7;font-size:0.85rem;">Select an action type above.</p>';
     }
   };
 
   window.updateActionType = function(idx, type) {
-    if(!currentEndActionsNodeId) return;
-    const node = editor.getNodeFromId(currentEndActionsNodeId);
-    if(!node || !node.data) return;
-    let actions = node.data.endActions || [];
-    if(!actions[idx]) actions[idx] = { type: 'trigger', trigger_action: '', tag_value: '', webhook_url: '', webhook_body: '', webhook_notes: '', conversion_label: '', conversion_value: '', recipients: '', subject: '', include_details: true };
-    actions[idx].type = type;
-    node.data.endActions = actions;
+    const actions = getNodeEndActions();
+    if (!actions[idx]) return;
+    actions[idx] = { type, trigger_action:'', tag_value:'', webhook_url:'', webhook_body:'', webhook_notes:'', conversion_label:'', conversion_value:'', recipients:'', subject:'', include_details:true };
+    setNodeEndActions(actions);
     renderEndActionsList(actions);
   };
 
   window.updateActionField = function(idx, field, value) {
-    if(!currentEndActionsNodeId) return;
-    const node = editor.getNodeFromId(currentEndActionsNodeId);
-    if(!node || !node.data) return;
-    let actions = node.data.endActions || [];
-    if(!actions[idx]) return;
+    const actions = getNodeEndActions();
+    if (!actions[idx]) return;
     actions[idx][field] = value;
-    node.data.endActions = actions;
+    setNodeEndActions(actions);
   };
 
   window.addEndAction = function() {
-    if(!currentEndActionsNodeId) return;
-    const node = editor.getNodeFromId(currentEndActionsNodeId);
-    if(!node || !node.data) return;
-    let actions = node.data.endActions || [];
-    actions.push({ type: 'webhook', trigger_action: '', tag_value: '', webhook_url: '', webhook_body: '', webhook_notes: '', conversion_label: '', conversion_value: '', recipients: '', subject: '', include_details: true });
-    node.data.endActions = actions;
+    const actions = getNodeEndActions();
+    actions.push({ type:'webhook', trigger_action:'', tag_value:'', webhook_url:'', webhook_body:'', webhook_notes:'', conversion_label:'', conversion_value:'', recipients:'', subject:'', include_details:true });
+    setNodeEndActions(actions);
     renderEndActionsList(actions);
   };
 
   window.removeEndAction = function(idx) {
-    const node = editor.getNodeFromId(currentEndActionsNodeId);
-    let actions = node.data.endActions || [];
+    const actions = getNodeEndActions();
     actions.splice(idx, 1);
-    node.data.endActions = actions;
+    setNodeEndActions(actions);
     renderEndActionsList(actions);
-  };
-
-  window.saveEndActions = function() {
-    closeEndActionsPanel();
   };
 </script>
 </body>
