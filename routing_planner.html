@@ -84,6 +84,9 @@
     .output-label-txt::placeholder { color:#2a4a60; }
     .add-path-btn { background:#162900; color:#D6DA01; border:1px solid #D6DA0188; padding:2px 8px; border-radius:4px; cursor:pointer; font-size:.75rem; font-weight:bold; margin-top:2px; align-self:flex-start; transition:all .15s; }
     .add-path-btn:hover { background:#D6DA01; color:#16294F; }
+    .remove-path-btn { display:none; margin-left:8px; background:#1e1010; color:#c07070; border:1px solid #3a1010; border-radius:4px; cursor:pointer; font-size:.9em; padding:2px 7px; line-height:1; transition:background .15s, color .15s, border-color .15s; }
+    .remove-path-btn:hover { background:#c03030; color:#fff; border-color:#c03030; }
+    .output-slot-row:hover .remove-path-btn { display:inline-block; }
 
     /* Notes textarea */
     .node-notes-field { width:100%; min-height:32px; max-height:70px; font-size:.78rem; border-radius:4px; background:#0d1b30; color:#6888a0; padding:3px 6px; border:1px dashed #0E5E8C55; resize:vertical; outline:none; font-family:inherit; line-height:1.2; margin-top:3px; display:block; }
@@ -589,14 +592,15 @@ function buildNodeHTML(type, label, outputLabels, notesValue, configData, endAct
     const addBtn = type === 'IVR'
       ? `<button class="add-path-btn" onclick="event.stopPropagation();window.addIVROutput(this)">+ Add Path</button>`
       : '';
-    outputInputsHTML = `<div class="output-slot-list">
-      ${labels.map((v,i) => `<div class="output-slot-row">
-        <input type="text" class="output-label-txt" value="${(v||'').replace(/"/g,'&quot;')}"
-          oninput="window.updateOutputLabel(this,${i},this.value)"
-          placeholder="${ph} ${i+1}">
-      </div>`).join('')}
-      ${addBtn}
-    </div>`;
+ outputInputsHTML = `<div class="output-slot-list">
+  ${labels.map((v,i) => `<div class="output-slot-row">
+    <input type="text" class="output-label-txt" value="${(v||'').replace(/"/g,'&quot;')}"
+      oninput="window.updateOutputLabel(this,${i},this.value)"
+      placeholder="${ph} ${i+1}">
+    <button class="remove-path-btn" title="Remove this path" onclick="event.stopPropagation();window.removeIVROutput(this,${i})">&times;</button>
+  </div>`).join('')}
+  ${addBtn}
+</div>`;
   }
 
   const summary = getConfigSummary(type, configData);
@@ -718,13 +722,30 @@ window.addIVROutput = function(btn) {
   const slotList = nodeDiv.querySelector('.output-slot-list');
   const row = document.createElement('div');
   row.className = 'output-slot-row';
+  let pl = (node.data.type === 'IVR') ? "Keypress" : "Condition";
   row.innerHTML = `<input type="text" class="output-label-txt" value=""
     oninput="window.updateOutputLabel(this,${newIdx},this.value)"
-    placeholder="Keypress ${newIdx+1}">`;
+    placeholder="${pl} ${newIdx+1}">
+    <button class="remove-path-btn" title="Remove this path"
+      onclick="event.stopPropagation();window.removeIVROutput(this,${newIdx})">&times;</button>`;
   slotList.insertBefore(row, btn);
   editor.updateConnectionNodes('node-'+nodeId);
 };
+window.removeIVROutput = function(btn, idx) {
+  const nodeDiv = btn.closest('.drawflow-node');
+  const nodeId = parseInt(nodeDiv.id.replace('node-', ''));
+  const node = editor.getNodeFromId(nodeId);
+  if (!node || !node.data || !node.data.outputLabels) return;
+  node.data.outputLabels.splice(idx, 1);
+  if (typeof editor.removeNodeOutput === 'function') {
+    editor.removeNodeOutput(nodeId, "output_" + (idx + 1));
+  }
+  editor.updateNodeDataFromId(nodeId, node.data);
 
+  // Remove only this row from the DOM to match UI immediately
+  const row = btn.closest('.output-slot-row');
+  if (row) row.remove();
+};
 window.editLabel = function(span) {
   const old = span.textContent;
   const inp = document.createElement('input');
