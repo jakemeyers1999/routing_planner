@@ -1,4 +1,4 @@
-<img width="1155" height="669" alt="Screenshot 2026-03-24 at 7 42 02 AM" src="https://github.com/user-attachments/assets/fc2cbd97-c8ff-4b2e-8175-02d464c0120c" />
+![Routing Planner Screenshot](https://github.com/jakemeyers1999/routing_planner/blob/3b6426255aacca4711da26810f55bb438257c452/routing_planner_demo.png)
 
 
 # CTM Routing Planner — Visual Call Flow Designer
