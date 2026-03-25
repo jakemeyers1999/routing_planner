@@ -169,6 +169,41 @@
     ::-webkit-scrollbar-track { background:#0d1b30; }
     ::-webkit-scrollbar-thumb { background:#0E5E8C; border-radius:3px; }
     ::-webkit-scrollbar-thumb:hover { background:#0796CA; }
+
+    /* ── Import from CTM button ── */
+    #toolbar .btn-import { background:#16294F; color:#01BDF6; border:1px solid #01BDF6; }
+    #toolbar .btn-import:hover { background:#01BDF6; color:#16294F; }
+
+    /* ── VoiceBot node — Supernova Lime like SmartRouter (AI routing) ── */
+    .drawflow-node[data-node="VoiceBot"] { border:2px solid #D6DA01!important; background:#0a1000; }
+
+    /* ── CTM Import Panel ── */
+    #ctmImportPanel { width:480px; }
+    .import-field { margin-bottom:12px; }
+    .import-field label { display:block; margin-bottom:4px; color:#5a8aaa; font-size:.78rem; font-weight:600; }
+    .import-field input {
+      width:100%; padding:7px 10px; border-radius:5px; border:1px solid #0E5E8C55;
+      background:#0d1b30; color:#c8e4f0; font-size:.88rem;
+    }
+    .import-field input:focus { outline:none; border-color:#0796CA; box-shadow:0 0 0 2px #0796CA22; }
+    .import-token-wrap { position:relative; }
+    .import-token-wrap input { padding-right:60px; }
+    .import-token-toggle { position:absolute; right:6px; top:50%; transform:translateY(-50%);
+      background:transparent; border:none; color:#4a7a9a; cursor:pointer; font-size:.75rem;
+      padding:3px 6px; border-radius:3px; }
+    .import-token-toggle:hover { color:#01BDF6; }
+    .import-hint { font-size:.75rem; color:#3a6a8a; margin-top:3px; }
+    .import-status-wrap { padding:8px 0 0; }
+    .import-status-text { font-size:.82rem; min-height:20px; color:#5a8aaa; word-break:break-word; }
+    .import-status-text.success { color:#D6DA01; }
+    .import-status-text.error   { color:#e07070; }
+    .import-progress { height:3px; background:#0E5E8C33; border-radius:2px; overflow:hidden; margin-top:6px; }
+    .import-progress-bar { height:100%; background:#01BDF6; border-radius:2px; width:0; transition:width .35s; }
+    .import-fallback { display:none; margin-top:12px; padding:12px; background:#0d1b30;
+      border:1px solid #0E5E8C55; border-radius:6px; }
+    .import-fallback p { font-size:.8rem; color:#6888a0; margin:0 0 8px; line-height:1.5; }
+    .import-fallback code { display:block; font-family:monospace; font-size:.78rem; color:#a8d8f0;
+      background:#071520; padding:6px 10px; border-radius:4px; word-break:break-all; margin:6px 0; }
   </style>
 </head>
 <body>
@@ -191,6 +226,7 @@
     <button onclick="loadFlow()">📂 Load</button>
     <button class="btn-arrange" onclick="autoArrange()">⚡ Auto Arrange</button>
     <button class="btn-generate" onclick="generatePythonScript()">🐍 Generate Script</button>
+    <button class="btn-import" onclick="openCTMImport()">📥 Import from CTM</button>
     <input type="file" id="fileInput" style="display:none;" accept="application/json" onchange="handleFile(event)">
     <span class="toolbar-hint">Click an output port to branch · Double-click label to rename</span>
   </div>
@@ -221,6 +257,41 @@
     </div>
   </div>
 
+  <!-- CTM Import Panel -->
+  <div id="ctmImportPanel" class="modal-box" style="display:none;">
+    <div class="modal-header">
+      <h3>📥 Import Routing from CTM Account</h3>
+    </div>
+    <div class="modal-body" style="padding-top:14px;">
+      <div class="import-field">
+        <label>Account ID</label>
+        <input id="ctmImportAccountId" type="text" placeholder="e.g. 11774" autocomplete="off">
+      </div>
+      <div class="import-field">
+        <label>Basic Auth Token <span style="color:#3a6a8a;font-weight:400;">(base64-encoded user:pass)</span></label>
+        <div class="import-token-wrap">
+          <input id="ctmImportAuthToken" type="password" placeholder="Paste your base64 token here" autocomplete="off">
+          <button class="import-token-toggle" onclick="toggleTokenVisibility()" id="ctmTokenToggle">Show</button>
+        </div>
+        <div class="import-hint">Found in CTM → Account → API Access. Format: base64(api_key:secret)</div>
+      </div>
+      <div class="import-status-wrap">
+        <div class="import-status-text" id="ctmImportStatus"></div>
+        <div class="import-progress"><div class="import-progress-bar" id="ctmImportProgressBar"></div></div>
+      </div>
+      <div class="import-fallback" id="ctmImportFallback">
+        <p>⚠ The browser couldn't reach the CTM API directly (CORS restriction).<br>
+           Run the included Python script instead — it generates a JSON file you can load here.</p>
+        <code id="ctmFallbackCmd"></code>
+        <p style="margin:4px 0 0;">Then use the <strong>📂 Load</strong> button to open the generated JSON file.</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-save" id="ctmImportBtn" onclick="fetchAndImportCTM()">🔍 Fetch &amp; Build Diagram</button>
+      <button class="btn-cancel" onclick="closeCTMImport()">Cancel</button>
+    </div>
+  </div>
+
   <!-- Node Configure Panel -->
   <div id="nodeConfigPanel" class="modal-box" style="display:none;">
     <div class="modal-header">
@@ -241,6 +312,7 @@ console.log('Loaded routing_planner.html!');
 // Constants & schema
 // ─────────────────────────────────────────────
 const LABEL_MAP = {
+  TrackingNumber:'Tracking Number', IVR:'IVR Menu', VoiceBot:'Voice Bot', Queue:'Queue',
   TrackingSource: 'Tracking Source',
   TrackingNumber:'Tracking Number', IVR:'IVR Menu', Queue:'Queue',
   SmartRouter:'Smart Router', ReceivingNumber:'Receiving Number',
@@ -1814,6 +1886,351 @@ print("  3. Test incoming calls through the full flow")
   a.download = 'ctm_flow_setup.py';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   console.log('Script generated:', script.split('\n').length, 'lines');
+}
+
+// ─────────────────────────────────────────────
+// Import from CTM — UI helpers
+// ─────────────────────────────────────────────
+function openCTMImport() {
+  document.getElementById('ctmImportPanel').style.display = 'block';
+  document.getElementById('ctmImportStatus').textContent = '';
+  document.getElementById('ctmImportStatus').className = 'import-status-text';
+  document.getElementById('ctmImportProgressBar').style.width = '0';
+  document.getElementById('ctmImportFallback').style.display = 'none';
+}
+function closeCTMImport() {
+  document.getElementById('ctmImportPanel').style.display = 'none';
+}
+function toggleTokenVisibility() {
+  const inp = document.getElementById('ctmImportAuthToken');
+  const btn = document.getElementById('ctmTokenToggle');
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'Hide'; }
+  else { inp.type = 'password'; btn.textContent = 'Show'; }
+}
+function setImportStatus(msg, pct, kind) {
+  const el = document.getElementById('ctmImportStatus');
+  el.textContent = msg;
+  el.className = 'import-status-text' + (kind ? ' ' + kind : '');
+  if (pct !== undefined) document.getElementById('ctmImportProgressBar').style.width = pct + '%';
+}
+function setImportBusy(busy) {
+  document.getElementById('ctmImportBtn').disabled = busy;
+}
+
+// ─────────────────────────────────────────────
+// Import from CTM — core fetch + graph build
+// ─────────────────────────────────────────────
+const CTM_BASE = 'https://api.calltrackingmetrics.com/api/v1';
+const CTM_TYPE_MAP = {
+  receiving_number:'ReceivingNumber', voice_bot:'VoiceBot',
+  call_queue:'Queue', voice_menu:'IVR',
+  VoiceMenu:'IVR', CallQueue:'Queue',
+  ConditionalRouter:'SmartRouter',
+  VoiceMail:'Voicemail', voicemail:'Voicemail',
+  PhysicalPhoneNumber:'ReceivingNumber',
+};
+
+async function ctmFetch(path, auth, params) {
+  const url = new URL(path.startsWith('http') ? path : CTM_BASE + path);
+  if (params) Object.entries(params).forEach(([k,v]) => url.searchParams.set(k,v));
+  const r = await fetch(url.toString(), { headers:{ Authorization: 'Basic '+auth, Accept:'application/json' } });
+  if (!r.ok) throw new Error('HTTP '+r.status+' '+r.statusText);
+  return r.json();
+}
+async function ctmPages(path, key, auth, extra) {
+  const out = []; let page = 1;
+  while (true) {
+    const d = await ctmFetch(path, auth, { per_page:200, page, ...(extra||{}) });
+    const batch = d[key] || [];
+    out.push(...batch);
+    if (page >= (d.total_pages||1) || !batch.length) break;
+    page++;
+  }
+  return out;
+}
+
+async function fetchAndImportCTM() {
+  const accountId = document.getElementById('ctmImportAccountId').value.trim();
+  const auth      = document.getElementById('ctmImportAuthToken').value.trim();
+  if (!accountId || !auth) { alert('Please enter Account ID and Auth Token.'); return; }
+
+  document.getElementById('ctmImportFallback').style.display = 'none';
+  setImportBusy(true);
+  setImportStatus('Connecting to CTM API…', 2);
+
+  try {
+    const base = `/accounts/${accountId}`;
+
+    setImportStatus('Fetching tracking numbers…', 5);
+    const numbers   = await ctmPages(`${base}/numbers`,              'numbers',              auth, { stats:1 });
+    setImportStatus(`${numbers.length} numbers · fetching voice bots…`, 15);
+    const voiceBots = await ctmPages(`${base}/voice_bots`,           'voice_bots',           auth);
+    setImportStatus(`${voiceBots.length} bots · fetching queues…`, 25);
+    const queues    = await ctmPages(`${base}/queues`,               'queues',               auth);
+    setImportStatus(`${queues.length} queues · fetching voice menus…`, 35);
+    const vMenus    = await ctmPages(`${base}/voice_menus`,          'voice_menus',          auth);
+    setImportStatus(`${vMenus.length} menus · fetching routers…`, 45);
+    const routers   = await ctmPages(`${base}/conditional_routers`,  'conditional_routers',  auth);
+    setImportStatus('Fetching receiving numbers…', 55);
+    const recvNums  = await ctmPages(`${base}/receiving_numbers`,    'receiving_numbers',    auth);
+
+    // Lookup maps
+    const rnById = {};
+    recvNums.forEach(r => { rnById[String(r.id||'')] = r; });
+
+    // Detail caches (lazy fetch)
+    const detCache = { vb:{}, vm:{}, queue:{}, router:{} };
+    async function getDetail(type, rid) {
+      if (detCache[type][rid]) return detCache[type][rid];
+      const ep = { vb:`${base}/voice_bots`, vm:`${base}/voice_menus`,
+                   queue:`${base}/queues`,  router:`${base}/conditional_routers` };
+      try { detCache[type][rid] = await ctmFetch(`${ep[type]}/${rid}`, auth); }
+      catch(e) { detCache[type][rid] = {}; }
+      return detCache[type][rid];
+    }
+
+    // Graph
+    const gNodes = {}, gEdges = [];
+    let nxtId = 1;
+    function addGNode(ntype, rid, props) {
+      const key = `${ntype}:${rid}`;
+      if (!gNodes[key]) gNodes[key] = { ntype, rid, node_id: nxtId++, ...props };
+      return key;
+    }
+    function addGEdge(fk, oi, tk) {
+      if (gNodes[fk] && gNodes[tk] && !gEdges.find(e=>e[0]===fk&&e[1]===oi&&e[2]===tk))
+        gEdges.push([fk,oi,tk]);
+    }
+
+    async function buildNode(ntype, rid, fallback) {
+      const key = `${ntype}:${rid}`;
+      if (gNodes[key]) return key;
+
+      if (ntype === 'VoiceBot') {
+        const d = await getDetail('vb', rid);
+        const name = d.name || fallback || `Voice Bot ${rid.slice(0,12)}`;
+        const labels=[], routes=[];
+        for (const fn of (d.functions||[])) {
+          for (const act of (fn.actions||[])) {
+            if (act.type !== 'transfer') continue;
+            const tId = String(act.route_id||''), tType = act.route_type||'';
+            const tNtype = CTM_TYPE_MAP[tType]||tType;
+            const tKey = `${tNtype}:${tId}`;
+            if (tId && !routes.find(r=>r[1]===tKey)) {
+              labels.push(act.description||act.label||tType);
+              routes.push([tNtype, tKey, tId, act.description||act.label||tType]);
+            }
+          }
+        }
+        if (!labels.length) labels.push('');
+        addGNode(ntype, rid, {
+          label:name, output_labels:labels,
+          config:{ greetingText:(d.play_message||'').slice(0,80), voice:d.voice||'' },
+          notes:`Voice Bot: ${name}\nTransfers: ${routes.length}${d.play_message?'\nGreeting: '+d.play_message:''}`,
+        });
+        for (let i=0;i<routes.length;i++) {
+          const [ct,,cr,lbl] = routes[i];
+          if (cr) addGEdge(key, i, await buildNode(ct, cr, lbl));
+        }
+
+      } else if (ntype === 'IVR') {
+        const d = await getDetail('vm', rid);
+        const name = d.name||fallback||`IVR ${rid.slice(0,12)}`;
+        const items = d.items||d.key_presses||d.keypresses||d.voice_menu_items||[];
+        const labels = items.map(it => `Keypress ${it.digit||it.key||'?'}`);
+        if (!labels.length) labels.push('');
+        addGNode(ntype, rid, {
+          label:name, output_labels:labels,
+          config:{ greetingType:d.greeting_type||'tts' },
+          notes:`Voice Menu: ${name}\nKeypresses: ${items.length}`,
+        });
+        for (let i=0;i<items.length;i++) {
+          const rt = items[i].route_to||items[i].next_route||null;
+          if (rt) await followRoute(key, rt, i);
+        }
+
+      } else if (ntype === 'Queue') {
+        const d = await getDetail('queue', rid);
+        const name = d.name||fallback||`Queue ${rid.slice(0,12)}`;
+        const routing = String(d.routing||'').toLowerCase();
+        addGNode(ntype, rid, {
+          label:name, output_labels:[''],
+          config:{
+            ringStrategy:routing||'round_robin',
+            agentCount:String(d.total_agents||''),
+            holdMusic:(d.wait_music||'').slice(0,60),
+            businessHours:d.schedule?'schedule':'always',
+          },
+          notes:`Queue: ${name}\nRing Strategy: ${routing}\nAgents: ${d.total_agents||''}`
+            +(d.default_action_label?`\nDefault: ${d.default_action_label}`:''),
+        });
+        if (d.default_action_type && d.default_action_id) {
+          const ct = CTM_TYPE_MAP[d.default_action_type];
+          if (ct) addGEdge(key, 0, await buildNode(ct, String(d.default_action_id), d.default_action_label||''));
+        }
+
+      } else if (ntype === 'SmartRouter') {
+        const d = await getDetail('router', rid);
+        const name = d.name||fallback||`Router ${rid.slice(0,12)}`;
+        const conds = d.conditions||d.rules||d.routers||[];
+        const labels = conds.map(c=>c.name||c.label||'Condition');
+        const routes = conds.map(c=>c.route_to||c.routing||null);
+        if (d.fallback||d.default_route) { labels.push('Default / Fallback'); routes.push(d.fallback||d.default_route); }
+        if (!labels.length) labels.push('');
+        addGNode(ntype, rid, {
+          label:name, output_labels:labels,
+          config:{ routingStrategy:d.routing_type||d.type||'unknown', conditionCount:String(conds.length) },
+          notes:`Router: ${name}\nConditions: ${conds.length}`,
+        });
+        for (let i=0;i<routes.length;i++) { if(routes[i]) await followRoute(key,routes[i],i); }
+
+      } else if (ntype === 'ReceivingNumber') {
+        const rn = rnById[rid]||{};
+        const rName = rn.name||rn.label||fallback||'';
+        const rNum  = rn.number||rn.formatted||rn.display_number||`#${rid.slice(0,12)}`;
+        addGNode(ntype, rid, {
+          label:rName||rNum, output_labels:[''],
+          config:{ phoneNumber:rNum, contactName:rName },
+          notes:`Number: ${rNum}`+(rName?`\nName: ${rName}`:''),
+        });
+
+      } else if (ntype === 'Voicemail') {
+        addGNode(ntype, rid, {
+          label:fallback||`Voicemail`, output_labels:[''],
+          config:{}, notes:`Voicemail ID: ${rid}`,
+        });
+
+      } else {
+        addGNode(ntype, rid, {
+          label:fallback||`${ntype} ${rid.slice(0,12)}`, output_labels:[''],
+          config:{}, notes:`Type: ${ntype}\nID: ${rid}`,
+        });
+      }
+      return key;
+    }
+
+    async function followRoute(fromKey, rt, outIdx) {
+      if (!rt) return;
+      const ctmType = String(rt.type||'');
+      if (!ctmType||ctmType==='none'||ctmType==='unknown') return;
+      const ntype = CTM_TYPE_MAP[ctmType]||ctmType;
+      const dial = rt.dial;
+      let rid='', name='';
+      if (Array.isArray(dial) && dial.length) {
+        if (rt.multi && dial.length > 1) {
+          for (let i=0;i<dial.length;i++) {
+            const t=dial[i], tRid=String(t.id||'');
+            if (tRid) addGEdge(fromKey, outIdx+i, await buildNode(ntype, tRid, t.name||t.display_number||t.number||''));
+          }
+          return;
+        }
+        rid=String(dial[0].id||''); name=dial[0].name||'';
+      } else if (dial&&typeof dial==='object') { rid=String(dial.id||''); name=dial.name||''; }
+      if (!rid) rid=String(rt.id||'');
+      if (!name) name=rt.name||'';
+      if (!rid) return;
+      addGEdge(fromKey, outIdx, await buildNode(ntype, rid, name));
+    }
+
+    // Seed from tracking numbers
+    let done=0;
+    for (const num of numbers) {
+      const nid = String(num.id||''); if (!nid) continue;
+      const numStr = num.number||num.formatted||'';
+      const src    = num.source||{};
+      const key = addGNode('TrackingNumber', nid, {
+        label: num.name||numStr||`Number ${nid.slice(0,12)}`,
+        output_labels:[''],
+        config:{ phoneNumber:numStr, numberType:num.type||'local' },
+        notes:`Number: ${numStr}`+(src.name?`\nSource: ${src.name}`:''),
+      });
+      if (num.route_to&&num.route_to.type) await followRoute(key, num.route_to, 0);
+      done++;
+      if (done%10===0) setImportStatus(`Processing numbers ${done}/${numbers.length}…`, 55+Math.round(done/numbers.length*25));
+    }
+
+    // BFS layout
+    setImportStatus('Calculating layout…', 82);
+    const hasIn = new Set(gEdges.map(e=>e[2]));
+    const depthMap = {};
+    const bfsQ = Object.keys(gNodes).filter(k=>!hasIn.has(k));
+    bfsQ.forEach(k=>{ depthMap[k]=0; });
+    for (let bi=0;bi<bfsQ.length;bi++) {
+      const curr=bfsQ[bi];
+      gEdges.filter(e=>e[0]===curr).forEach(([,, tk])=>{
+        if (depthMap[tk]===undefined) { depthMap[tk]=(depthMap[curr]||0)+1; bfsQ.push(tk); }
+      });
+    }
+    let maxD = Math.max(0,...Object.values(depthMap));
+    Object.keys(gNodes).forEach(k=>{ if(depthMap[k]===undefined) depthMap[k]=++maxD; });
+
+    const colCnt={}, colRow={};
+    Object.keys(gNodes).sort((a,b)=>(depthMap[a]||0)-(depthMap[b]||0)).forEach(k=>{
+      const d=depthMap[k]||0; const ri=colCnt[d]||0; colCnt[d]=ri+1; colRow[k]=ri;
+    });
+    const COL_W=340, ROW_H=230;
+    Object.keys(gNodes).forEach(k=>{
+      const d=depthMap[k]||0;
+      gNodes[k].pos_x = 64+d*COL_W;
+      gNodes[k].pos_y = 64+(colRow[k]||0)*ROW_H;
+      gNodes[k].depth = d;
+    });
+
+    // Edge adjacency for serialisation
+    const outMap={}, inMap={};
+    Object.keys(gNodes).forEach(k=>{ outMap[k]={}; inMap[k]=[]; });
+    gEdges.forEach(([fk,oi,tk])=>{ if(gNodes[fk]&&gNodes[tk]){ outMap[fk][oi]=tk; inMap[tk].push([fk,oi]); } });
+
+    setImportStatus('Building diagram…', 93);
+    const dfData = {};
+    Object.entries(gNodes).forEach(([key,node])=>{
+      const nid=node.node_id, ntype=node.ntype;
+      const labels=[...(node.output_labels||[''])];
+      const maxOi = Math.max(-1,...Object.keys(outMap[key]||{}).map(Number));
+      while(labels.length<=maxOi) labels.push('');
+
+      const outputs={};
+      for(let i=0;i<Math.max(labels.length,1);i++){
+        const tk=(outMap[key]||{})[i];
+        outputs[`output_${i+1}`] = tk&&gNodes[tk]
+          ? { connections:[{ node:String(gNodes[tk].node_id), output:'input_1' }] }
+          : { connections:[] };
+      }
+      const inputs={};
+      const ic=(inMap[key]||[]).filter(([fk])=>gNodes[fk]);
+      if(ic.length) inputs.input_1 = { connections:ic.map(([fk,oi])=>({ node:String(gNodes[fk].node_id), input:`output_${oi+1}` })) };
+
+      dfData[String(nid)] = {
+        id:nid, name:ntype,
+        data:{ type:ntype, label:node.label, depth:node.depth||0,
+               outputLabels:labels, config:node.config||{}, endActions:[], notesValue:node.notes||'' },
+        class:'', typenode:false, inputs, outputs,
+        html: buildNodeHTML(ntype, node.label, labels, node.notes||'', node.config||{}, []),
+        pos_x:node.pos_x||64, pos_y:node.pos_y||64,
+      };
+    });
+
+    editor.clear();
+    editor.import({ drawflow:{ Home:{ data:dfData } } });
+    const n = Object.keys(dfData).length;
+    setImportStatus(`✓ Imported ${n} nodes from account ${accountId}`, 100, 'success');
+    setTimeout(closeCTMImport, 1800);
+
+  } catch(err) {
+    console.error(err);
+    if (err instanceof TypeError && /fetch|network|CORS/i.test(err.message)) {
+      setImportStatus('Browser blocked the request (CORS). Use the Python script instead:', 0, 'error');
+      const accountId = document.getElementById('ctmImportAccountId').value.trim();
+      const auth = document.getElementById('ctmImportAuthToken').value.trim();
+      document.getElementById('ctmFallbackCmd').textContent =
+        `python3 ctm_to_routing_planner.py --account-id ${accountId} --auth-token ${auth}`;
+      document.getElementById('ctmImportFallback').style.display = 'block';
+    } else {
+      setImportStatus(`✗ Error: ${err.message}`, 0, 'error');
+    }
+  } finally {
+    setImportBusy(false);
+  }
 }
 
 function handleFile(evt) {
