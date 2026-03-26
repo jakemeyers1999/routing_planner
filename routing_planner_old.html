@@ -55,6 +55,7 @@
     /* Supernova Lime — terminal actions */
     .drawflow-node[data-node="TrackingSource"]  { border:2px solid #01BDF6!important; background:#16294F!important; }
     .drawflow-node[data-node="EndAction"]      { border:2px solid #D6DA01!important; background:#0d1200; }
+    .drawflow-node[data-node="SalesforceScope"]{ border:2px solid #01BDF6!important; background:#081727; }
 
     /* Port hover glow */
     .drawflow .output:hover, .drawflow .input:hover { box-shadow:0 0 8px 2px #01BDF6; }
@@ -261,6 +262,11 @@ textarea.node-notes-field:focus {
   box-shadow: 0 0 0 2px #D6DA01CC;
   caret-color: #D6DA01;
 }
+.ea-usage-indicator {
+  font-size: 0.7rem;
+  color: #5a8aaa;
+  margin-bottom: 2px;
+}
   </style>
 </head>
 <body>
@@ -276,6 +282,7 @@ textarea.node-notes-field:focus {
       <option value="Voicemail">Voicemail</option>
       <option value="NoAnswer">No Answer Branch</option>
       <option value="EndAction">End Action</option>
+      <option value="SalesforceScope">Salesforce Scope</option>
       <option value="TrackingSource">Tracking Source</option>
 
     </select>
@@ -374,7 +381,8 @@ const LABEL_MAP = {
   TrackingSource: 'Tracking Source',
   TrackingNumber:'Tracking Number', IVR:'IVR Menu', Queue:'Queue',
   SmartRouter:'Smart Router', ReceivingNumber:'Receiving Number',
-  Voicemail:'Voicemail', NoAnswer:'No Answer Branch', EndAction:'End Action'
+  Voicemail:'Voicemail', NoAnswer:'No Answer Branch', EndAction:'End Action',
+  SalesforceScope:'Salesforce Scope'
 };
 
 const NODE_TYPES_LIST = [
@@ -387,6 +395,7 @@ const NODE_TYPES_LIST = [
   {value:'Voicemail',label:'Voicemail'},
   {value:'NoAnswer',label:'No Answer Branch'},
   {value:'EndAction',label:'End Action'},
+  {value:'SalesforceScope',label:'Salesforce Scope'},
   {value:'IVR',label:'IVR Menu'}, {value:'Queue',label:'Queue'},
   {value:'SmartRouter',label:'Smart Router'}, {value:'ReceivingNumber',label:'Receiving Number'},
   {value:'Voicemail',label:'Voicemail'}, {value:'NoAnswer',label:'No Answer Branch'},
@@ -567,6 +576,67 @@ const NODE_CONFIG_SCHEMA = {
   },
 
   EndAction: { title:'End Action', sections:[] },  // handled by its own panel
+  SalesforceScope: {
+    title: '🔗 Salesforce Scope — Configuration Scope',
+    sections: [
+      { title: 'Salesforce Sync Settings', fields: [
+        { key:'sf_sync_timing', label:'When to Sync', type:'multiselect',
+          opts:[
+            {v:'realtime', l:'Start of Call'},
+            {v:'call_end', l:'After Call Ends'},
+            {v:'trigger',  l:'On Custom Trigger/Event'}
+          ], rows:3 },
+        { key:'sf_data_sync', label:'What Activities/Data to Sync', type:'multiselect',
+          opts:[
+            {v:'calls',      l:'Calls'},
+            {v:'texts',      l:'Texts/SMS'},
+            {v:'recordings', l:'Call Recordings'},
+            {v:'outcomes',   l:'Call Outcomes'},
+            {v:'forms',      l:'Form Fills'}
+          ], rows:5 },
+        { key:'sf_create_update', label:'Create or Update Records', type:'select',
+          opts:[
+            {v:'', l:'Select...'},
+            {v:'create_only',   l:'Create only (new leads/records)'},
+            {v:'update_only',   l:'Update existing only'},
+            {v:'create_update', l:'Create if none, update if exists'}
+          ] },
+        { key:'sf_overwrite', label:'Data Overwrite Policy', type:'select',
+          opts:[
+            {v:'', l:'Select...'},
+            {v:'never',  l:'Never overwrite (append only)'},
+            {v:'always', l:'Always overwrite with new data'},
+            {v:'custom', l:'Custom/Conditional overwrite'}
+          ] },
+        { key:'sf_object_map', label:'Map Leads/Calls to', type:'select',
+          opts:[
+            {v:'', l:'Select...'},
+            {v:'lead',        l:'Lead (default)'},
+            {v:'contact',     l:'Contact'},
+            {v:'opportunity', l:'Opportunity'},
+            {v:'account',     l:'Account'},
+            {v:'custom',      l:'Custom Object'}
+          ] },
+        { key:'sf_mapping_notes', label:'Field Mapping Notes', type:'textarea',
+          ph:'Describe any custom field mapping, triggers, special logic, etc.' }
+      ]},
+      { title: 'Salesforce CTI Softphone Configuration', fields: [
+        { key:'sf_cti_adapter_used', label:'Use Salesforce CTI Softphone Adapter?', type:'select',
+          opts:[{v:'', l:'Select...'}, {v:'yes', l:'Yes'}, {v:'no', l:'No'}] },
+        { key:'sf_screen_pop_logic', label:'Screen Pop Logic', type:'select',
+          opts:[
+            {v:'', l:'Select...'},
+            {v:'always',   l:'Always pop matching record'},
+            {v:'new_only', l:'Only for new callers/records'},
+            {v:'never',    l:'Never (no screen pop)'},
+            {v:'custom',   l:'Custom/Conditional logic'}
+          ] },
+        { key:'sf_cti_agent_count', label:'# of CTI Softphone Agents', type:'number', ph:'e.g. 5' },
+        { key:'sf_cti_notes', label:'CTI Softphone Notes', type:'textarea',
+          ph:'Describe any special call flows, agent requirements, etc.' }
+      ]}
+    ]
+  },
   TrackingSource: {
     title: '📈 Tracking Source — Configuration Scope',
     sections: [
@@ -689,44 +759,18 @@ function getConfigSummary(type, config) {
       return parts.filter(Boolean).join(' · ') || null;
     }
     // Salesforce Scope summary (existing from prior)
+    case 'SalesforceScope':
     case 'salesforce_scope': {
       const summaryParts = [];
-      if (Array.isArray(c.sf_sync_timing) && c.sf_sync_timing.length) {
-        const syncLabels = {realtime:'Immediately', call_end:'After Call Ends', trigger:'On Trigger'};
-        summaryParts.push('When to Sync: ' + c.sf_sync_timing.map(opt => syncLabels[opt] || opt).join(', '));
-      }
-      if (Array.isArray(c.sf_data_sync) && c.sf_data_sync.length) {
-        const syncDataLabels = {calls:'Calls',texts:'Texts',recordings:'Recordings',outcomes:'Outcomes',forms:'Forms'};
-        summaryParts.push('Sync: ' + c.sf_data_sync.map(opt => syncDataLabels[opt] || opt).join(', '));
-      }
-      if (c.sf_create_update) {
-        const createUpMap = {create_only:'Create only', update_only:'Update only', create_update:'Create/Update'};
-        summaryParts.push((createUpMap[c.sf_create_update] || c.sf_create_update));
-      }
       if (c.sf_overwrite) {
         const overwriteMap = {never:'No Overwrite', always:'Always Overwrite', custom:'Custom Overwrite'};
-        summaryParts.push((overwriteMap[c.sf_overwrite] || c.sf_overwrite));
+        summaryParts.push('Overwrite: ' + (overwriteMap[c.sf_overwrite] || c.sf_overwrite));
       }
       if (c.sf_object_map) {
         const objMap = {lead:'Lead',contact:'Contact',opportunity:'Opportunity',account:'Account',custom:'Custom'};
-        summaryParts.push('SF Obj: ' + (objMap[c.sf_object_map] || c.sf_object_map));
-      }
-      if (c.sf_mapping_notes) {
-        let notes = c.sf_mapping_notes.trim();
-        if (notes.length > 40) notes = notes.slice(0, 35) + '...';
-        summaryParts.push('Mapping: ' + notes);
+        summaryParts.push('Object: ' + (objMap[c.sf_object_map] || c.sf_object_map));
       }
       if (c.sf_cti_adapter_used) summaryParts.push('CTI: ' + (c.sf_cti_adapter_used === 'yes' ? 'Yes' : 'No'));
-      if (c.sf_screen_pop_logic) {
-        const popMap = {always:'Pop Always',new_only:'Pop New Only',never:'No Pop',custom:'Pop Custom'};
-        summaryParts.push(popMap[c.sf_screen_pop_logic] || c.sf_screen_pop_logic);
-      }
-      if (c.sf_cti_agent_count) summaryParts.push('Agents: ' + c.sf_cti_agent_count);
-      if (c.sf_cti_notes) {
-        let notes = c.sf_cti_notes.trim();
-        if (notes.length > 40) notes = notes.slice(0, 35) + '...';
-        summaryParts.push('CTI Notes: ' + notes);
-      }
       return summaryParts.length ? summaryParts.join(' · ') : null;
     }
     // === Salesforce Trigger summary ===
@@ -766,6 +810,53 @@ function getConfigSummary(type, config) {
     default: return null;
   }
 }
+
+function getNodeSummary(type, config, endActions) {
+  const parts = [];
+  const configSummary = getConfigSummary(type, config);
+  if (configSummary) parts.push(configSummary);
+
+  const actions = Array.isArray(endActions) ? endActions : [];
+
+  // Currently we only surface Salesforce Trigger in the summary.
+  // This supports both inline and template-reference forms.
+  const salesforceParts = actions
+    .map(a => {
+      if (!a) return null;
+
+      // Inline SF trigger on this node
+      if (a.type === 'salesforce_trigger') {
+        return getConfigSummary('salesforce_trigger', a);
+      }
+
+      // Ref to EndAction template that holds an inline SF trigger
+      if (a.type === 'salesforce_trigger_ref' &&
+          typeof a.endActionNodeId === 'number') {
+        try {
+          const eaNode = editor.getNodeFromId(a.endActionNodeId);
+          if (!eaNode || !eaNode.data) return null;
+          const eas = Array.isArray(eaNode.data.endActions)
+            ? eaNode.data.endActions
+            : [];
+          const triggerCfg = eas.find(x => x && x.type === 'salesforce_trigger');
+          if (!triggerCfg) return null;
+          return getConfigSummary('salesforce_trigger', triggerCfg);
+        } catch {
+          return null;
+        }
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+
+  if (salesforceParts.length) {
+    parts.push('SF: ' + salesforceParts.join(' · '));
+  }
+
+  return parts.length ? parts.join(' · ') : null;
+}
+
 // ─────────────────────────────────────────────
 // Drawflow init
 // ─────────────────────────────────────────────
@@ -798,7 +889,62 @@ document.addEventListener('keydown', function(e) {
   // Prevent all other node-deleting cases (including plain or Cmd+Delete/Backspace)
 });
 
-let nodeCount = { TrackingSource:1,TrackingNumber:1,IVR:1,Queue:1,SmartRouter:1,ReceivingNumber:1,Voicemail:1,NoAnswer:1,EndAction:1 };
+let nodeCount = { TrackingSource:1,TrackingNumber:1,IVR:1,Queue:1,SmartRouter:1,ReceivingNumber:1,Voicemail:1,NoAnswer:1,EndAction:1,SalesforceScope:1 };
+
+function migrateLegacySalesforceScopeNodes() {
+  const data = editor.drawflow && editor.drawflow.drawflow && editor.drawflow.drawflow.Home
+    ? editor.drawflow.drawflow.Home.data
+    : null;
+  if (!data) return;
+
+  const nodes = Object.values(data);
+  let migrated = false;
+
+  nodes.forEach(n => {
+    const d = n.data || {};
+    const actions = Array.isArray(d.endActions) ? d.endActions : [];
+    const scopeActions = actions.filter(a => a && a.type === 'salesforce_scope');
+    if (!scopeActions.length) return;
+
+    d.endActions = actions.filter(a => !(a && a.type === 'salesforce_scope'));
+    editor.updateNodeDataFromId(n.id, d);
+
+    scopeActions.forEach((scopeAction, idx) => {
+      const config = { ...scopeAction };
+      delete config.type;
+      const label = `Salesforce Scope ${nodeCount.SalesforceScope++}`;
+      const notes = generateNotesFromConfig('SalesforceScope', config);
+      const sfData = {
+        type: 'SalesforceScope',
+        label,
+        depth: (d.depth || 1) + 1,
+        outputLabels: [''],
+        config,
+        notesValue: notes,
+        endActions: []
+      };
+      const x = (n.pos_x || 0) + 300;
+      const y = (n.pos_y || 0) + (idx * 150);
+      const html = buildNodeHTML('SalesforceScope', label, sfData.outputLabels, notes, config, []);
+      const newId = editor.addNode('SalesforceScope', 0, 1, x, y, '', sfData, html);
+
+      setTimeout(() => {
+        const el = document.getElementById('node-' + newId);
+        if (el) el.setAttribute('data-node', 'SalesforceScope');
+      }, 10);
+
+      // No incoming connection: Salesforce Scope has 0 inputs now
+      migrated = true;
+    });
+  });
+
+  if (migrated) {
+    setTimeout(() => {
+      const refreshed = editor.drawflow.drawflow.Home.data;
+      Object.values(refreshed).forEach(node => editor.updateConnectionNodes('node-' + node.id));
+    }, 20);
+  }
+}
 
 // ─────────────────────────────────────────────
 // Node HTML builder
@@ -822,7 +968,7 @@ function buildNodeHTML(type, label, outputLabels, notesValue, configData, endAct
 </div>`;
   }
 
-  const summary = getConfigSummary(type, configData);
+  const summary = getNodeSummary(type, configData, endActions);
   const summaryHTML = summary
     ? `<div class="node-config-summary"><span class="config-badge configured">⚙ ${summary}</span></div>`
     : `<div class="node-config-summary"></div>`;
@@ -834,9 +980,27 @@ function buildNodeHTML(type, label, outputLabels, notesValue, configData, endAct
   let eaBtnText = '⚡ End Actions';
   let eaBtnClass = 'node-footer-btn end-actions-btn';
   if (actions.length > 0) {
-    const END_TYPE_ICON = { trigger:'⚡', webhook:'🌐', google_conversion:'📊', email_notification:'📧' };
-    const icons = [...new Set(actions.map(a => END_TYPE_ICON[a.type] || '⚡'))];
-    eaBtnText = icons.join('') + ' ' + (actions.length > 1 ? actions.length + ' actions ✓' : (actions[0]?.type||'action') + ' ✓');
+    const END_TYPE_ICON = {
+      trigger:'⚡',
+      webhook:'🌐',
+      google_conversion:'📊',
+      email_notification:'📧',
+      salesforce_trigger:'⏱️'
+    };
+
+    // Normalise *_ref → base type (strip "_ref")
+    const typeKeys = actions
+      .filter(a => a && a.type)
+      .map(a => a.type.endsWith('_ref') ? a.type.slice(0, -4) : a.type);
+
+    const baseTypes = [...new Set(typeKeys)];
+    const icons = baseTypes.map(t => END_TYPE_ICON[t] || '⚡');
+
+    eaBtnText = icons.join('') + ' ' +
+      (actions.length > 1
+        ? actions.length + ' actions ✓'
+        : (baseTypes[0] || 'action') + ' ✓');
+
     eaBtnClass += ' has-actions';
   }
 
@@ -852,7 +1016,7 @@ function buildNodeHTML(type, label, outputLabels, notesValue, configData, endAct
     ${summaryHTML}
     ${outputInputsHTML}
     <textarea class="node-notes-field" placeholder="Notes / scope details..." rows="2"
-      oninput="window.saveNodeNotes(this)">${notes}</textarea>
+      oninput="window.autosizeNotes(this);window.saveNodeNotes(this)">${notes}</textarea>
   </div>
   <div class="node-footer">
     ${configureBtn}
@@ -879,6 +1043,8 @@ function addNodeWithDepth(type, parentId, fromOutputIdx) {
   else if (type === 'SmartRouter'){ outputs=3; inputs=1; }
   else if (type === 'NoAnswer')  { outputs=1; inputs=1; }
   else if (type === 'EndAction') { outputs=0; inputs=1; }
+  else if (type === 'SalesforceScope') { outputs=1; inputs=0; }
+
 
   const outputLabels = Array(outputs).fill('');
   let x=200, y=120, depth=1;
@@ -895,9 +1061,13 @@ function addNodeWithDepth(type, parentId, fromOutputIdx) {
   const html = buildNodeHTML(type, label, outputLabels, '', {}, []);
   const newId = editor.addNode(String(type), inputs, outputs, x, y, '', data, html);
 
-  setTimeout(()=>{
-    const el = document.getElementById('node-'+newId);
-    if (el) el.setAttribute('data-node', type);
+  setTimeout(() => {
+    const el = document.getElementById('node-' + newId);
+    if (el) {
+      el.setAttribute('data-node', type);
+      const ta = el.querySelector('.node-notes-field');
+      if (ta && window.autosizeNotes) window.autosizeNotes(ta);
+    }
   }, 10);
 
   if (parentId !== null && fromOutputIdx) {
@@ -909,6 +1079,29 @@ function addNodeWithDepth(type, parentId, fromOutputIdx) {
 // ─────────────────────────────────────────────
 // Inline field handlers
 // ─────────────────────────────────────────────
+// Automatically resize notes textarea up to 4 visible lines
+window.autosizeNotes = function(ta) {
+  if (!ta) return;
+
+  // Reset height so scrollHeight is for current content
+  ta.style.height = 'auto';
+
+  const cs = window.getComputedStyle(ta);
+  const lineHeight = parseFloat(cs.lineHeight) || 16;
+  const maxLines = 4;
+
+  const border =
+    (parseFloat(cs.borderTopWidth)  || 0) +
+    (parseFloat(cs.borderBottomWidth) || 0);
+  const padding =
+    (parseFloat(cs.paddingTop)  || 0) +
+    (parseFloat(cs.paddingBottom) || 0);
+
+  const maxHeight = lineHeight * maxLines + padding + border;
+
+  const newHeight = Math.min(ta.scrollHeight, maxHeight);
+  ta.style.height = newHeight + 'px';
+};
 window.saveNodeNotes = function(ta) {
   try {
     const id = parseInt(ta.closest('.drawflow-node').id.replace('node-',''));
@@ -1056,6 +1249,13 @@ function renderConfigFields(type, config) {
         html += `<select data-key="${f.key}" onchange="window.onConfigChange('${f.key}',this.value);window.refreshConfigVisibility()">`;
         f.opts.forEach(o => html += `<option value="${o.v}" ${curVal===o.v?'selected':''}>${o.l}</option>`);
         html += `</select>`;
+      } else if (f.type === 'multiselect') {
+        const curVals = Array.isArray(val) ? val : (Array.isArray(f.default) ? f.default : []);
+        html += `<select data-key="${f.key}" multiple size="${f.rows || 4}"
+          onchange="window.onConfigChange('${f.key}',Array.from(this.selectedOptions).map(o=>o.value))">`;
+        (f.opts || []).forEach(o => html += `<option value="${o.v}" ${curVals.includes(o.v)?'selected':''}>${o.l}</option>`);
+        html += `</select>`;
+        html += `<div class="field-hint">Hold Ctrl/Cmd to select multiple</div>`;
       } else if (f.type === 'check') {
         const checked = val !== undefined ? val : (f.default || false);
         html += `<div class="checkbox-row">
@@ -1182,6 +1382,22 @@ function generateNotesFromConfig(type, config) {
       add('Caller ID',          'callerId',  {caller:"Show Caller's Number",tracking:'Show Tracking Number',custom:'Custom Number'});
       add('Custom Caller ID',   'customCallerId');
       break;
+    case 'SalesforceScope':
+    case 'salesforce_scope': {
+      const syncTimingMap = {realtime:'Start of Call', call_end:'After Call Ends', trigger:'On Custom Trigger/Event'};
+      const syncDataMap = {calls:'Calls', texts:'Texts/SMS', recordings:'Call Recordings', outcomes:'Call Outcomes', forms:'Form Fills'};
+      if (Array.isArray(c.sf_sync_timing) && c.sf_sync_timing.length) lines.push('When to Sync: ' + c.sf_sync_timing.map(v => syncTimingMap[v] || v).join(', '));
+      if (Array.isArray(c.sf_data_sync) && c.sf_data_sync.length) lines.push('Sync Data: ' + c.sf_data_sync.map(v => syncDataMap[v] || v).join(', '));
+      add('Create/Update',      'sf_create_update', {create_only:'Create only', update_only:'Update existing', create_update:'Create/Update'});
+      add('Overwrite Policy',   'sf_overwrite', {never:'Never overwrite', always:'Always overwrite', custom:'Custom/Conditional'});
+      add('Object Mapping',     'sf_object_map', {lead:'Lead', contact:'Contact', opportunity:'Opportunity', account:'Account', custom:'Custom'});
+      add('Field Mapping Notes','sf_mapping_notes');
+      add('CTI Adapter',        'sf_cti_adapter_used', {yes:'Yes', no:'No'});
+      add('Screen Pop Logic',   'sf_screen_pop_logic', {always:'Always', new_only:'New callers only', never:'Never', custom:'Custom'});
+      add('CTI Agent Count',    'sf_cti_agent_count');
+      add('CTI Notes',          'sf_cti_notes');
+      break;
+    }
   }
   return lines.join('\n');
 }
@@ -1192,7 +1408,8 @@ window.saveNodeConfig = function() {
   if (!n) return;
   const type = n.data.type;
   const config = n.data.config || {};
-  const summary = getConfigSummary(type, config);
+  const configSummary = getConfigSummary(type, config);
+  const summary = getNodeSummary(type, config, n.data.endActions || []);
 
   // Auto-populate notes field with human-readable config summary
   const notesText = generateNotesFromConfig(type, config);
@@ -1213,11 +1430,14 @@ window.saveNodeConfig = function() {
     // Update notes textarea
     if (notesText) {
       const ta = nodeEl.querySelector('.node-notes-field');
-      if (ta) ta.value = notesText;
+      if (ta) {
+        ta.value = notesText;
+        if (window.autosizeNotes) window.autosizeNotes(ta);
+      }
     }
     // Mark configure button as configured
     const cfgBtn = nodeEl.querySelector('.node-footer-btn:not(.end-actions-btn):not(.copy-btn)');
-    if (cfgBtn) cfgBtn.classList.toggle('configured', !!summary);
+    if (cfgBtn) cfgBtn.classList.toggle('configured', !!configSummary);
   }
   configSnapshot = null;
   document.getElementById('nodeConfigPanel').style.display = 'none';
@@ -1236,45 +1456,231 @@ window.closeNodeConfig = function() {
 };
 
 // ─────────────────────────────────────────────
-// End Actions panel
+// End Actions panel (with reusable templates)
 // ─────────────────────────────────────────────
 let currentEANodeId = null;
 let eaSnapshot = null;
 
 const END_ACTION_TYPES = [
   { value:'trigger',            label:'Trigger',           icon:'⚡' },
+  { value:'tag_call',           label:'Tag Call',          icon:'🏷️' },
   { value:'webhook',            label:'Webhook',           icon:'🌐' },
   { value:'google_conversion',  label:'Google Conversion', icon:'📊' },
   { value:'email_notification', label:'Email Alert',       icon:'📧' },
-  { value:'salesforce_scope', label:'Salesforce Scope', icon:'🔗' },
   { value:'salesforce_trigger', label:'Salesforce Trigger', icon:'⏱️' },
 ];
-const EA_ICON = Object.fromEntries(END_ACTION_TYPES.map(t=>[t.value,t.icon]));
+
+// ICON LOOKUP; ref types (e.g. "webhook_ref") will be normalised
+const EA_ICON = Object.fromEntries(END_ACTION_TYPES.map(t => [t.value, t.icon]));
+
+function getDefaultEndActionConfig(type) {
+  switch (type) {
+    case 'trigger':
+      return {
+        type: 'trigger',
+        event: '',
+        forAllNumbers: true,
+        intended_outcome: ''
+      };
+    case 'tag_call':
+      return {
+        type: 'tag_call',
+        tag_value: '',
+        condition: ''
+      };
+    case 'webhook':
+      return {
+        type: 'webhook',
+        webhook_url: '',
+        webhook_body: '',
+        webhook_notes: '',
+        auth_type: 'none'
+      };
+    case 'google_conversion':
+      return {
+        type: 'google_conversion',
+        conversion_label: '',
+        conversion_value: '',
+        min_duration: ''
+      };
+    case 'email_notification':
+      return {
+        type: 'email_notification',
+        recipients: '',
+        subject: '',
+        email_trigger: 'all',
+        include_details: true
+      };
+    case 'salesforce_trigger':
+      return {
+        type: 'salesforce_trigger',
+        sf_trigger_event: '',
+        sf_trigger_delay: '',
+        sf_trigger_object: '',
+        sf_trigger_matching: '',
+        sf_trigger_overwrite: '',
+        sf_trigger_field_mappings: '',
+        sf_trigger_notes: ''
+      };
+    default:
+      return { type };
+  }
+}
+
+function getEANodeActions() {
+  if (!currentEANodeId) return [];
+  const n = editor.getNodeFromId(currentEANodeId);
+  return (n && n.data && Array.isArray(n.data.endActions)) ? n.data.endActions : [];
+}
+function setEANodeActions(actions) {
+  if (!currentEANodeId) return;
+  const n = editor.getNodeFromId(currentEANodeId);
+  if (!n) return;
+  n.data.endActions = Array.isArray(actions) ? actions : [];
+  editor.updateNodeDataFromId(currentEANodeId, n.data);
+}
+
+// Return EndAction nodes that contain at least one action of a given base type
+// e.g. "webhook", "google_conversion", "trigger", "salesforce_trigger"
+function getTemplateEndActionNodes(baseType) {
+  const dfHome = editor.drawflow &&
+                 editor.drawflow.drawflow &&
+                 editor.drawflow.drawflow.Home
+    ? editor.drawflow.drawflow.Home.data
+    : {};
+  const out = [];
+  Object.values(dfHome).forEach(n => {
+    if (!n || !n.data || n.data.type !== 'EndAction') return;
+    const eas = Array.isArray(n.data.endActions) ? n.data.endActions : [];
+    if (eas.some(a => a && a.type === baseType)) {
+      out.push(n);
+    }
+  });
+  return out;
+}
+
+// Usage map for all template refs (xxx_ref)
+function getTemplateUsageMap() {
+  const dfHome = editor.drawflow &&
+                 editor.drawflow.drawflow &&
+                 editor.drawflow.drawflow.Home
+    ? editor.drawflow.drawflow.Home.data
+    : {};
+  const usage = {}; // { templateNodeId: [ { nodeId, label, type } ] }
+
+  Object.values(dfHome).forEach(n => {
+    if (!n || !n.data) return;
+    const d = n.data;
+    const eas = Array.isArray(d.endActions) ? d.endActions : [];
+    eas.forEach(a => {
+      if (!a || !a.type || !a.type.endsWith('_ref')) return;
+      const tid = a.endActionNodeId;
+      if (typeof tid !== 'number') return;
+      if (!usage[tid]) usage[tid] = [];
+      usage[tid].push({
+        nodeId: n.id,
+        label: d.label || `Node ${n.id}`,
+        type: a.type.slice(0, -4)  // strip "_ref"
+      });
+    });
+  });
+
+  return usage;
+}
+
+function updateEndActionUsageIndicators() {
+  const dfHome = editor.drawflow &&
+                 editor.drawflow.drawflow &&
+                 editor.drawflow.drawflow.Home
+    ? editor.drawflow.drawflow.Home.data
+    : {};
+  const usageMap = getTemplateUsageMap();
+
+  Object.values(dfHome).forEach(n => {
+    if (!n || !n.data || n.data.type !== 'EndAction') return;
+    const el = document.getElementById('node-' + n.id);
+    if (!el) return;
+    const inner = el.querySelector('.node-inner');
+    if (!inner) return;
+
+    // Find or create the indicator element
+    let indicator = inner.querySelector('.ea-usage-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.className = 'ea-usage-indicator';
+
+      // Insert just after the config summary if present, else near top
+      const summaryDiv = inner.querySelector('.node-config-summary');
+      if (summaryDiv && summaryDiv.parentNode === inner) {
+        inner.insertBefore(indicator, summaryDiv.nextSibling);
+      } else {
+        inner.insertBefore(indicator, inner.firstChild.nextSibling);
+      }
+    }
+
+    const usage = usageMap[n.id] || [];
+    if (!usage.length) {
+      indicator.textContent = 'Used by: (no nodes yet)';
+    } else {
+      const names = usage.map(u => u.label).join(', ');
+      indicator.textContent = 'Used by: ' + names;
+    }
+  });
+}
 
 window.showEndActionsPanel = function(nodeId) {
   currentEANodeId = nodeId;
   const node = editor.getNodeFromId(nodeId);
-  eaSnapshot = JSON.parse(JSON.stringify(node.data.endActions||[]));
+  const actions = Array.isArray(node.data.endActions) ? node.data.endActions : [];
+
+  // Ensure trigger templates are fully initialized before first render.
+  let changed = false;
+  actions.forEach(a => {
+    if (a && a.type === 'trigger') {
+      const prev = JSON.stringify(a);
+      normaliseTriggerAction(a);
+      if (JSON.stringify(a) !== prev) changed = true;
+    }
+  });
+  if (changed) {
+    node.data.endActions = actions;
+    editor.updateNodeDataFromId(nodeId, node.data);
+  }
+
+  eaSnapshot = JSON.parse(JSON.stringify(actions));
   const label = node.data.label || 'Node';
-  document.getElementById('endActionsPanelTitle').textContent = `⚡ End Actions — ${label}`;
-  renderEndActionsList(node.data.endActions||[]);
+  document.getElementById('endActionsPanelTitle').textContent =
+    `⚡ End Actions — ${label}`;
+  renderEndActionsList(actions);
   document.getElementById('endActionsPanel').style.display = 'block';
 };
 
 window.cancelEndActions = function() {
   if (currentEANodeId !== null && eaSnapshot !== null) {
     const n = editor.getNodeFromId(currentEANodeId);
-    if (n) { n.data.endActions = eaSnapshot; editor.updateNodeDataFromId(currentEANodeId, n.data); }
+    if (n) {
+      n.data.endActions = eaSnapshot;
+      editor.updateNodeDataFromId(currentEANodeId, n.data);
+    }
   }
   document.getElementById('endActionsPanel').style.display = 'none';
-  currentEANodeId = null; eaSnapshot = null;
+  currentEANodeId = null;
+  eaSnapshot = null;
 };
 
 window.saveEndActions = function() {
   if (currentEANodeId !== null) {
     const node = editor.getNodeFromId(currentEANodeId);
-    const actions = (node && node.data && node.data.endActions) ? node.data.endActions : [];
-    const nodeEl = document.getElementById('node-'+currentEANodeId);
+    const actions = (node && node.data && Array.isArray(node.data.endActions))
+      ? node.data.endActions
+      : [];
+    const notesText = generateEndActionNotes(actions);
+    const shouldWriteNotes = !!notesText;
+    if (shouldWriteNotes && node && node.data) {
+      node.data.notesValue = notesText;
+      editor.updateNodeDataFromId(currentEANodeId, node.data);
+    }
+    const nodeEl = document.getElementById('node-' + currentEANodeId);
     if (nodeEl) {
       const btn = nodeEl.querySelector('.end-actions-btn');
       if (btn) {
@@ -1282,14 +1688,40 @@ window.saveEndActions = function() {
           btn.innerHTML = '⚡ End Actions';
           btn.classList.remove('has-actions');
         } else {
-          // Show unique icons + count/type summary
-          const types = [...new Set(actions.map(a=>a.type))];
-          const icons = types.map(t=>EA_ICON[t]||'⚡').join('');
-          const typeNames = types.map(t=>END_ACTION_TYPES.find(x=>x.value===t)?.label||t);
-          const summary = typeNames.length <= 2 ? typeNames.join(' + ') : typeNames.length + ' actions';
+          // Normalise *_ref → base type (strip "_ref")
+          const typeKeys = actions
+            .filter(a => a && a.type)
+            .map(a => a.type.endsWith('_ref') ? a.type.slice(0, -4) : a.type);
+
+          const types = [...new Set(typeKeys)];
+          const icons = types.map(t => EA_ICON[t] || '⚡').join('');
+          const typeNames = types.map(t =>
+            END_ACTION_TYPES.find(x => x.value === t)?.label || t
+          );
+          const summary =
+            typeNames.length <= 2
+              ? typeNames.join(' + ')
+              : typeNames.length + ' actions';
           btn.innerHTML = `${icons} ${summary} ✓`;
           btn.classList.add('has-actions');
         }
+      }
+
+      const summaryDiv = nodeEl.querySelector('.node-config-summary');
+      if (summaryDiv && node && node.data) {
+        const summary = getNodeSummary(
+          node.data.type,
+          node.data.config || {},
+          actions
+        );
+        summaryDiv.innerHTML = summary
+          ? `<span class="config-badge configured">⚙ ${summary}</span>`
+          : '';
+      }
+      const notesTa = nodeEl.querySelector('.node-notes-field');
+      if (notesTa && shouldWriteNotes) {
+        notesTa.value = notesText;
+        if (window.autosizeNotes) window.autosizeNotes(notesTa);
       }
     }
   }
@@ -1298,59 +1730,153 @@ window.saveEndActions = function() {
   currentEANodeId = null;
 };
 
-function getEANodeActions() {
-  if (!currentEANodeId) return [];
-  const n = editor.getNodeFromId(currentEANodeId);
-  return (n && n.data && n.data.endActions) ? n.data.endActions : [];
-}
-function setEANodeActions(actions) {
-  if (!currentEANodeId) return;
-  const n = editor.getNodeFromId(currentEANodeId);
-  if (!n) return;
-  n.data.endActions = actions;
-  editor.updateNodeDataFromId(currentEANodeId, n.data);
+// Create a new EndAction node as a "template" for a specific base action type
+function createTemplateEndActionNode(baseType, parentNode) {
+  const typeDef = END_ACTION_TYPES.find(t => t.value === baseType);
+  const labelBase = typeDef ? typeDef.label : baseType;
+
+  // Suggested default name
+  const suggestedName = `End Action – ${labelBase} ${nodeCount.EndAction++}`;
+
+  // Let the user name the End Action template
+  const customName = window.prompt('Name this End Action', suggestedName) || suggestedName;
+
+  const eaData = {
+    type: 'EndAction',
+    label: customName,
+    depth: (parentNode.data.depth || 1) + 1,
+    outputLabels: [],
+    config: {},
+    endActions: [getDefaultEndActionConfig(baseType)],
+    notesValue: ''
+  };
+
+  const x = (parentNode.pos_x || 0) + 280;
+  const y = (parentNode.pos_y || 0) + 40;
+  const html = buildNodeHTML('EndAction', customName, [], '', {}, eaData.endActions);
+  const newId = editor.addNode('EndAction', 1, 0, x, y, '', eaData, html);
+
+  setTimeout(() => {
+    const el = document.getElementById('node-' + newId);
+    if (el) el.setAttribute('data-node', 'EndAction');
+
+    const ta = el && el.querySelector('.node-notes-field');
+    if (ta && window.autosizeNotes) window.autosizeNotes(ta);
+
+    // Open that EndAction node's own panel so user can configure the action
+    window.showEndActionsPanel(newId);
+  }, 10);
+
+  return newId;
 }
 
+// Generic handler for *all* template selections (trigger/webhook/etc.)
+// Expects on <select>:
+//   data-ea-index : action row index
+//   data-ea-type  : base type, e.g. "webhook", "trigger", "salesforce_trigger"
+window.onSelectEndActionTemplate = function(sel) {
+  const idx = parseInt(sel.getAttribute('data-ea-index'), 10);
+  const baseType = sel.getAttribute('data-ea-type');
+  const val = sel.value;
+  if (!currentEANodeId || isNaN(idx) || !baseType) return;
+
+  const node = editor.getNodeFromId(currentEANodeId);
+  if (!node) return;
+
+  const eas = Array.isArray(node.data.endActions) ? node.data.endActions : [];
+  const action = eas[idx] || {};
+
+  if (val === '__new__') {
+    const newId = createTemplateEndActionNode(baseType, node);
+    action.type = `${baseType}_ref`;
+    action.endActionNodeId = newId;
+
+  } else if (val) {
+    action.type = `${baseType}_ref`;
+    action.endActionNodeId = parseInt(val, 10);
+
+  } else {
+    // Cleared
+    action.type = `${baseType}_ref`;
+    delete action.endActionNodeId;
+  }
+
+  eas[idx] = action;
+  node.data.endActions = eas;
+  editor.updateNodeDataFromId(currentEANodeId, node.data);
+
+  // Refresh template nodes' "Used by" indicators
+  updateEndActionUsageIndicators();
+};
+
+// ---- Render list: inline vs template-selector depending on node type ----
 window.renderEndActionsList = function(actions) {
   const c = document.getElementById('endActionsList');
+  const node = currentEANodeId ? editor.getNodeFromId(currentEANodeId) : null;
+  const isTemplateNode = node && node.data && node.data.type === 'EndAction';
+
   if (!actions || actions.length === 0) {
-    c.innerHTML = '<div class="empty-actions">No end actions yet.<br>Click "+ Add Action" to automate post-call tasks.</div>';
+    c.innerHTML =
+      '<div class="empty-actions">No end actions yet.<br>' +
+      'Click "+ Add Action" to automate post-call tasks.</div>';
+
+    // Update template node badges whenever the panel re-renders
+    updateEndActionUsageIndicators();
     return;
   }
+
   c.innerHTML = actions.map((a,idx) => `
     <div class="action-row">
       <div class="action-type-tabs">
         ${END_ACTION_TYPES.map(t=>`<label>
-          <input type="radio" name="at_${idx}" value="${t.value}" ${a.type===t.value?'checked':''}
+          <input type="radio" name="at_${idx}" value="${t.value}" ${(a.type===t.value || a.type===t.value+'_ref')?'checked':''}
             onchange="window.updateActionType(${idx},this.value)">
           ${t.icon} ${t.label}
         </label>`).join('')}
       </div>
-      ${getActionFields(a.type, idx, a)}
+      ${getActionFields(a.type, idx, a, isTemplateNode)}
       <button class="remove-action-btn" onclick="window.removeEndAction(${idx})">✕ Remove</button>
     </div>`).join('');
+
+  // Update template node badges whenever the panel re-renders
+  updateEndActionUsageIndicators();
 };
 
-window.getActionFields = function(type, idx, a) {
-  switch(type) {
-    case 'trigger': return `
-      <div class="action-field"><label>Trigger Action</label>
-        <select onchange="window.updateActionField(${idx},'trigger_action',this.value)">
-          <option value="">Select...</option>
-          <option value="tag"          ${a.trigger_action==='tag'?'selected':''}>Add Tag</option>
-          <option value="remove_tag"   ${a.trigger_action==='remove_tag'?'selected':''}>Remove Tag</option>
-          <option value="set_schedule" ${a.trigger_action==='set_schedule'?'selected':''}>Set Schedule</option>
-          <option value="transfer"     ${a.trigger_action==='transfer'?'selected':''}>Transfer Call</option>
-          <option value="sms"          ${a.trigger_action==='sms'?'selected':''}>Send SMS</option>
-        </select>
-      </div>
-      <div class="action-field"><label>Tag / Value</label>
-        <input type="text" value="${a.tag_value||''}" oninput="window.updateActionField(${idx},'tag_value',this.value)" placeholder="Tag name or ID">
+// type: current a.type (may be base or *_ref)
+// isTemplateNode: true when we're editing an EndAction node (inline config)
+window.getActionFields = function(type, idx, a, isTemplateNode) {
+  // Normalise ref types to base type
+  const baseType = type && type.endsWith('_ref') ? type.slice(0, -4) : type;
+
+  switch (baseType) {
+    case 'tag_call':
+      // Always inline, local-only; no template selector
+      return `
+      <div class="action-field"><label>Tag Value</label>
+        <input type="text"
+          value="${a.tag_value || ''}"
+          oninput="window.updateActionField(${idx},'tag_value',this.value)"
+          placeholder="e.g. VIP, High-Value, Campaign ID">
       </div>
       <div class="action-field"><label>Condition (optional)</label>
-        <input type="text" value="${a.condition||''}" oninput="window.updateActionField(${idx},'condition',this.value)" placeholder="e.g. call duration > 60s">
+        <input type="text"
+          value="${a.condition || ''}"
+          oninput="window.updateActionField(${idx},'condition',this.value)"
+          placeholder="e.g. call duration > 60s, source == Google">
       </div>`;
-    case 'webhook': return `
+
+    case 'trigger':
+      if (isTemplateNode) {
+        // Trigger template UI: event + all-activities + intended outcome
+        return renderTriggerTemplateConfig(idx, a);
+      }
+      // Non-template node → choose Trigger template
+      return renderTemplateSelector('trigger', idx, a);
+
+    case 'webhook':
+      if (isTemplateNode) {
+        // ORIGINAL inline Webhook UI (template definition)
+        return `
       <div class="action-field"><label>Webhook URL (POST)</label>
         <input type="text" value="${a.webhook_url||''}" oninput="window.updateActionField(${idx},'webhook_url',this.value)" placeholder="https://example.com/webhook">
       </div>
@@ -1368,7 +1894,12 @@ window.getActionFields = function(type, idx, a) {
       <div class="action-field"><label>Notes</label>
         <input type="text" value="${a.webhook_notes||''}" oninput="window.updateActionField(${idx},'webhook_notes',this.value)" placeholder="Integration notes...">
       </div>`;
-    case 'google_conversion': return `
+      }
+      return renderTemplateSelector(baseType, idx, a);
+
+    case 'google_conversion':
+      if (isTemplateNode) {
+        return `
       <div class="action-field"><label>Conversion Label (from Google Ads)</label>
         <input type="text" value="${a.conversion_label||''}" oninput="window.updateActionField(${idx},'conversion_label',this.value)" placeholder="Conversion label">
       </div>
@@ -1378,89 +1909,12 @@ window.getActionFields = function(type, idx, a) {
       <div class="action-field"><label>Min Duration to Count as Conversion (sec)</label>
         <input type="number" value="${a.min_duration||''}" oninput="window.updateActionField(${idx},'min_duration',this.value)" placeholder="e.g. 60">
       </div>`;
-    case 'salesforce_scope': return `
-  <div class="action-section"><b>Salesforce Sync Settings</b></div>
-  <div class="action-field"><label>When to Sync</label>
-  <select multiple size="3"
-    onchange="window.updateActionField(${idx},'sf_sync_timing',Array.from(this.selectedOptions).map(o=>o.value))">
-    <option value="realtime"   ${(Array.isArray(a.sf_sync_timing)&&a.sf_sync_timing.includes('realtime'))?'selected':''}>Start of Call</option>
-    <option value="call_end"   ${(Array.isArray(a.sf_sync_timing)&&a.sf_sync_timing.includes('call_end'))?'selected':''}>After Call Ends</option>
-    <option value="trigger"    ${(Array.isArray(a.sf_sync_timing)&&a.sf_sync_timing.includes('trigger'))?'selected':''}>On Custom Trigger/Event</option>
-  </select>
-  <div style="font-size:.83em;color:#5a7a9a;">Hold Ctrl/Cmd to select multiple</div>
-  </div>
-  <div class="action-field"><label>What Activities/Data to Sync</label>
-    <select multiple size="4"
-      onchange="window.updateActionField(${idx},'sf_data_sync',Array.from(this.selectedOptions).map(o=>o.value))">
-      <option value="calls"     ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('calls')?'selected':''}>Calls</option>
-      <option value="texts"     ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('texts')?'selected':''}>Texts/SMS</option>
-      <option value="recordings"${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('recordings')?'selected':''}>Call Recordings</option>
-      <option value="outcomes"  ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('outcomes')?'selected':''}>Call Outcomes</option>
-      <option value="forms"     ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('forms')?'selected':''}>Form Fills</option>
-    </select>
-    <div style="font-size:.83em;color:#5a7a9a;">Hold Ctrl/Cmd to select multiple</div>
-  </div>
-  <div class="action-field"><label>Create or Update Records</label>
-    <select onchange="window.updateActionField(${idx},'sf_create_update',this.value)">
-      <option value="">Select...</option>
-      <option value="create_only"    ${a.sf_create_update==='create_only'?'selected':''}>Create only (new leads/records)</option>
-      <option value="update_only"    ${a.sf_create_update==='update_only'?'selected':''}>Update existing only</option>
-      <option value="create_update"  ${a.sf_create_update==='create_update'?'selected':''}>Create if none, update if exists</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Data Overwrite Policy</label>
-    <select onchange="window.updateActionField(${idx},'sf_overwrite',this.value)">
-      <option value="">Select...</option>
-      <option value="never" ${a.sf_overwrite==='never'?'selected':''}>Never overwrite (append only)</option>
-      <option value="always"${a.sf_overwrite==='always'?'selected':''}>Always overwrite with new data</option>
-      <option value="custom"${a.sf_overwrite==='custom'?'selected':''}>Custom/Conditional overwrite</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Map Leads/Calls to</label>
-    <select onchange="window.updateActionField(${idx},'sf_object_map',this.value)">
-      <option value="">Select...</option>
-      <option value="lead"         ${a.sf_object_map==='lead'?'selected':''}>Lead (default)</option>
-      <option value="contact"      ${a.sf_object_map==='contact'?'selected':''}>Contact</option>
-      <option value="opportunity"  ${a.sf_object_map==='opportunity'?'selected':''}>Opportunity</option>
-      <option value="account"      ${a.sf_object_map==='account'?'selected':''}>Account</option>
-      <option value="custom"       ${a.sf_object_map==='custom'?'selected':''}>Custom Object</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Field Mapping Notes</label>
-    <textarea rows="2" placeholder="Describe any custom field mapping, triggers, special logic, etc."
-              oninput="window.updateActionField(${idx},'sf_mapping_notes',this.value)">${a.sf_mapping_notes||''}</textarea>
-  </div>
+      }
+      return renderTemplateSelector(baseType, idx, a);
 
-  <div class="action-section" style="margin-top:18px;"><b>Salesforce CTI Softphone Configuration</b></div>
-
-  <div class="action-field"><label>Use Salesforce CTI Softphone Adapter?</label>
-    <select onchange="window.updateActionField(${idx},'sf_cti_adapter_used',this.value)">
-      <option value="">Select...</option>
-      <option value="yes" ${a.sf_cti_adapter_used==='yes'?'selected':''}>Yes</option>
-      <option value="no"  ${a.sf_cti_adapter_used==='no'?'selected':''}>No</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Screen Pop Logic</label>
-    <select onchange="window.updateActionField(${idx},'sf_screen_pop_logic',this.value)">
-      <option value="">Select...</option>
-      <option value="always"    ${a.sf_screen_pop_logic==='always'?'selected':''}>Always pop matching record</option>
-      <option value="new_only"  ${a.sf_screen_pop_logic==='new_only'?'selected':''}>Only for new callers/records</option>
-      <option value="never"     ${a.sf_screen_pop_logic==='never'?'selected':''}>Never (no screen pop)</option>
-      <option value="custom"    ${a.sf_screen_pop_logic==='custom'?'selected':''}>Custom/Conditional logic</option>
-    </select>
-  </div>
-  <div class="action-field"><label># of CTI Softphone Agents</label>
-    <input type="number" min="1" step="1"
-      value="${a.sf_cti_agent_count||''}"
-      oninput="window.updateActionField(${idx},'sf_cti_agent_count',this.value)"
-      placeholder="e.g. 5">
-  </div>
-  <div class="action-field"><label>CTI Softphone Notes</label>
-    <textarea rows="2" placeholder="Describe any special call flows, agent requirements, etc."
-              oninput="window.updateActionField(${idx},'sf_cti_notes',this.value)">${a.sf_cti_notes||''}</textarea>
-  </div>
-`;
-    case 'email_notification': return `
+    case 'email_notification':
+      if (isTemplateNode) {
+        return `
       <div class="action-field"><label>Recipients (comma-separated)</label>
         <input type="text" value="${a.recipients||''}" oninput="window.updateActionField(${idx},'recipients',this.value)" placeholder="email@example.com">
       </div>
@@ -1482,7 +1936,13 @@ window.getActionFields = function(type, idx, a) {
           <label for="inc_${idx}">Include caller info, duration, recording link</label>
         </div>
       </div>`;
-    case 'salesforce_trigger': return `
+      }
+      return renderTemplateSelector(baseType, idx, a);
+
+    case 'salesforce_trigger':
+      if (isTemplateNode) {
+        // ORIGINAL inline SF Trigger UI (*template definition only*)
+        return `
   <div class="action-section"><b>Salesforce Trigger Configuration</b></div>
   <div class="action-field"><label>Trigger Event</label>
     <select onchange="window.updateActionField(${idx},'sf_trigger_event',this.value)">
@@ -1516,7 +1976,6 @@ window.getActionFields = function(type, idx, a) {
       <option value="match_update"   ${a.sf_trigger_matching==='match_update'?'selected':''}>Match Existing, Update</option>
       <option value="custom"         ${a.sf_trigger_matching==='custom'?'selected':''}>Custom Logic (see notes)</option>
     </select>
-    <div style="font-size:.83em;color:#5a7a9a;">(see <a href='https://calltrackingmetrics.zendesk.com/hc/en-us/articles/6052709883533-Salesforce-Record-Creation-and-Matching' target='_blank'>record matching guide</a>)</div>
   </div>
   <div class="action-field"><label>Overwrite Existing Salesforce Data?</label>
     <select onchange="window.updateActionField(${idx},'sf_trigger_overwrite',this.value)">
@@ -1534,81 +1993,204 @@ window.getActionFields = function(type, idx, a) {
   <div class="action-field"><label>Additional Notes</label>
     <textarea rows="2"
       oninput="window.updateActionField(${idx},'sf_trigger_notes',this.value)">${a.sf_trigger_notes||''}</textarea>
-  </div>
-`;
-    default: return '<p style="color:#5a7a9a;font-size:.8rem">Select an action type above.</p>';
+  </div>`;
+      }
+      return renderTemplateSelector(baseType, idx, a);
+
+    default:
+      return '<p style="color:#5a7a9a;font-size:.8rem">Select an action type above.</p>';
   }
 };
 
+// ─────────────────────────────────────────────
+// Trigger template UI helpers
+// ─────────────────────────────────────────────
+
+// Ensure a trigger action has the new structured shape
+function normaliseTriggerAction(a) {
+  if (!a || a.type !== 'trigger') return a;
+  // Backward-compat: migrate legacy notes key
+  if (typeof a.intended_outcome !== 'string') {
+    a.intended_outcome = typeof a.notes === 'string' ? a.notes : '';
+  }
+  if (typeof a.forAllNumbers !== 'boolean') a.forAllNumbers = true;
+  if (typeof a.event !== 'string') a.event = '';
+  delete a.notes;
+  delete a.name;
+  delete a.workflows;
+  return a;
+}
+
+// Render the Trigger template configuration UI
+function renderTriggerTemplateConfig(idx, a) {
+  a = normaliseTriggerAction(a);
+
+  // Trigger Event options (from CTM article)
+  const eventOptions = [
+    { v:'activity_received',       l:'Activity is received' },
+    { v:'activity_sent',           l:'Activity is sent' },
+    { v:'from_workflow',           l:'From another Workflow' },
+    { v:'agent_assigned',          l:'Agent is assigned or a receiving number is connected' },
+    { v:'activity_transferred',    l:'Activity is transferred' },
+    { v:'session_data_available',  l:'Session data is available' },
+    { v:'caller_hangs_up_early',   l:'Caller hangs up the call early' },
+    { v:'contact_updated',         l:'Contact panel is updated by a user' },
+    { v:'end_event_immediate',     l:'End event immediately after hangup' },
+    { v:'end_event_all_data',      l:'End event with all data ready' },
+    { v:'end_event_plus_1h',       l:'1 hour after end event' },
+    { v:'sale_updated',            l:'Sale is updated for an activity' },
+    { v:'formreactor_created',     l:'FormReactor activity is created' },
+    { v:'ppc_data_retrieved',      l:'PPC data is retrieved for an activity' },
+    { v:'cost_data_retrieved',     l:'Cost data is retrieved for an activity' },
+    { v:'geo_router_input',        l:'Caller inputs zip/area for Geo Router' },
+    { v:'keyword_spotted',         l:'Keyword is spotted' },
+    { v:'audio_accessed',          l:'Audio Accessed' },
+    { v:'new_agent_assigned',      l:'New agent is assigned' },
+    { v:'transcription_ready',     l:'Transcription is ready' },
+    { v:'task_completed',          l:'Task is completed' }
+  ];
+
+  const eventSelectHtml = `
+    <div class="action-field">
+      <label>Trigger Event</label>
+      <select onchange="window.updateTriggerMeta(${idx},'event',this.value)">
+        <option value="">Select when this trigger should run…</option>
+        ${eventOptions.map(o =>
+          `<option value="${o.v}" ${a.event===o.v?'selected':''}>${o.l}</option>`
+        ).join('')}
+      </select>
+    </div>
+    <div class="action-field">
+      <label>Applies to</label>
+      <div class="checkbox-row">
+        <input type="checkbox" id="tr_all_${idx}"
+          ${a.forAllNumbers ? 'checked' : ''}
+          onchange="window.updateTriggerMeta(${idx},'forAllNumbers',this.checked)">
+        <label for="tr_all_${idx}">Trigger for all activities (scope by number in CTM if needed)</label>
+      </div>
+    </div>
+  `;
+
+  const intendedOutcomeHtml = `
+    <div class="action-field">
+      <label>Intended Outcome</label>
+      <textarea rows="2"
+        oninput="window.updateTriggerMeta(${idx},'intended_outcome',this.value)"
+        placeholder="Describe the desired business outcome for this trigger...">${a.intended_outcome || ''}</textarea>
+    </div>
+  `;
+  return eventSelectHtml + intendedOutcomeHtml;
+}
+
+// ---- Trigger mutation helpers ----
+window.updateTriggerMeta = function(idx, key, value) {
+  const actions = getEANodeActions();
+  const a = actions[idx];
+  if (!a || a.type !== 'trigger') return;
+  a[key] = value;
+  setEANodeActions(actions);
+};
+
+// Helper: renders a template selector for any baseType
+function renderTemplateSelector(baseType, idx, a) {
+  const templates = getTemplateEndActionNodes(baseType);
+  const selectedId =
+    (a.type === `${baseType}_ref` && typeof a.endActionNodeId === 'number')
+      ? a.endActionNodeId
+      : null;
+
+  let html = `<div class="action-field">
+    <label>${END_ACTION_TYPES.find(t => t.value === baseType)?.label || baseType} template</label>
+    <select data-ea-index="${idx}" data-ea-type="${baseType}"
+      onchange="window.onSelectEndActionTemplate(this)">`;
+
+  html += `<option value="">Select a template…</option>`;
+
+  templates.forEach(eaNode => {
+    const id = eaNode.id;
+    const label = (eaNode.data && eaNode.data.label)
+      ? eaNode.data.label
+      : `End Action ${id}`;
+    const sel = (id === selectedId) ? 'selected' : '';
+    html += `<option value="${id}" ${sel}>${label}</option>`;
+  });
+
+  html += `<option value="__new__">+ New End Action (${END_ACTION_TYPES.find(t => t.value===baseType)?.label || baseType})…</option>`;
+  html += `</select>`;
+
+  if (selectedId) {
+    const usageMap = getTemplateUsageMap();
+    const usage = usageMap[selectedId] || [];
+    const names = usage.map(u => u.label).join(', ');
+    html += `<div class="field-hint">Used by: ${
+      names || '(this is the only usage)'
+    }</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
 window.updateActionType = function(idx, type) {
   const actions = getEANodeActions();
-  switch(type) {
-    case 'trigger':
-      actions[idx] = {
-        type: 'trigger',
-        trigger_action: '',
-        tag_value: '',
-        condition: ''
-      };
-      break;
-    case 'webhook':
-      actions[idx] = {
-        type: 'webhook',
-        webhook_url: '',
-        webhook_body: '',
-        webhook_notes: '',
-        auth_type: 'none'
-      };
-      break;
-    case 'google_conversion':
-      actions[idx] = {
-        type: 'google_conversion',
-        conversion_label: '',
-        conversion_value: '',
-        min_duration: ''
-      };
-      break;
-    case 'email_notification':
-      actions[idx] = {
-        type: 'email_notification',
-        recipients: '',
-        subject: '',
-        email_trigger: 'all',
-        include_details: true
-      };
-      break;
-  case 'salesforce_scope':
-    actions[idx] = {
-      type: 'salesforce_scope',
-      sf_sync_timing: [],   // Make sure this is an empty array here!
-      sf_data_sync: [],
-      sf_create_update: '',
-      sf_overwrite: '',
-      sf_object_map: '',
-      sf_mapping_notes: '',
-      sf_cti_adapter_used: '',
-      sf_screen_pop_logic: '',
-      sf_cti_agent_count: '',
-      sf_cti_notes: ''
-    };
-    break;
-  case 'salesforce_trigger':
-    actions[idx] = {
-    type: 'salesforce_trigger',
-    sf_trigger_event: '',
-    sf_trigger_delay: '',
-    sf_trigger_object: '',
-    sf_trigger_matching: '',
-    sf_trigger_overwrite: '',
-    sf_trigger_field_mappings: '',
-    sf_trigger_notes: ''
-    };
-  break;
-    // You can add new cases here if you add future end action types.
-  }
+  actions[idx] = getDefaultEndActionConfig(type);
   setEANodeActions(actions);
   renderEndActionsList(actions);
 };
+
+function eventLabelForTrigger(v) {
+  const map = {
+    activity_received: 'Activity is received',
+    activity_sent: 'Activity is sent',
+    from_workflow: 'From another Workflow',
+    agent_assigned: 'Agent is assigned or receiving number is connected',
+    activity_transferred: 'Activity is transferred',
+    session_data_available: 'Session data is available',
+    caller_hangs_up_early: 'Caller hangs up early',
+    contact_updated: 'Contact panel updated by user',
+    end_event_immediate: 'End event immediately after hangup',
+    end_event_all_data: 'End event with all data ready',
+    end_event_plus_1h: '1 hour after end event',
+    sale_updated: 'Sale is updated for an activity',
+    formreactor_created: 'FormReactor activity created',
+    ppc_data_retrieved: 'PPC data retrieved',
+    cost_data_retrieved: 'Cost data retrieved',
+    geo_router_input: 'Caller inputs zip/area for Geo Router',
+    keyword_spotted: 'Keyword is spotted',
+    audio_accessed: 'Audio Accessed',
+    new_agent_assigned: 'New agent is assigned',
+    transcription_ready: 'Transcription is ready',
+    task_completed: 'Task is completed'
+  };
+  return map[v] || v || '';
+}
+
+function generateEndActionNotes(actions) {
+  const rows = [];
+  (Array.isArray(actions) ? actions : []).forEach((a, idx) => {
+    if (!a) return;
+    let trigger = null;
+    if (a.type === 'trigger') {
+      trigger = normaliseTriggerAction({ ...a });
+    } else if (a.type === 'trigger_ref' && typeof a.endActionNodeId === 'number') {
+      try {
+        const refNode = editor.getNodeFromId(a.endActionNodeId);
+        const refActions = refNode && refNode.data && Array.isArray(refNode.data.endActions)
+          ? refNode.data.endActions
+          : [];
+        const refTrigger = refActions.find(x => x && x.type === 'trigger');
+        if (refTrigger) trigger = normaliseTriggerAction({ ...refTrigger });
+      } catch {}
+    }
+    if (!trigger) return;
+    rows.push(`Trigger ${idx + 1} — When to Run: ${eventLabelForTrigger(trigger.event) || 'Not set'}`);
+    rows.push(`Trigger ${idx + 1} — Run for All Activities: ${trigger.forAllNumbers ? 'Yes' : 'No'}`);
+    if (trigger.intended_outcome && trigger.intended_outcome.trim()) {
+      rows.push(`Trigger ${idx + 1} — Intended Outcome: ${trigger.intended_outcome.trim()}`);
+    }
+  });
+  return rows.join('\n');
+}
 
 window.updateActionField = function(idx, field, value) {
   const actions = getEANodeActions();
@@ -1618,7 +2200,14 @@ window.updateActionField = function(idx, field, value) {
 };
 window.addEndAction = function() {
   const actions = getEANodeActions();
-  actions.push({ type:'webhook', trigger_action:'', tag_value:'', condition:'', webhook_url:'', webhook_body:'', webhook_notes:'', auth_type:'none', conversion_label:'', conversion_value:'', min_duration:'', recipients:'', subject:'', email_trigger:'all', include_details:true });
+  // Default to webhook; user can switch type & select template
+  actions.push({
+    type:'webhook',
+    webhook_url:'',
+    webhook_body:'',
+    webhook_notes:'',
+    auth_type:'none'
+  });
   setEANodeActions(actions);
   renderEndActionsList(actions);
 };
@@ -1757,6 +2346,7 @@ editor.on('nodeMoved', () => setTimeout(snapToGrid, 10));
 // ─────────────────────────────────────────────
 editor.on('import', function() {
   setTimeout(function() {
+    migrateLegacySalesforceScopeNodes();
     snapToGrid();
     const data = editor.drawflow.drawflow.Home.data;
     Object.values(data).forEach(n => {
@@ -1774,16 +2364,19 @@ editor.on('import', function() {
             n.data.config,
             n.data.endActions
           );
-        }
+          }
       }
     });
+
+    // After all nodes are rebuilt, update template usage indicators
+    updateEndActionUsageIndicators();
   }, 100);
 });
-
 // ─────────────────────────────────────────────
 // Save / Load
 // ─────────────────────────────────────────────
 function saveFlow() {
+  migrateLegacySalesforceScopeNodes();
   // Update each node's HTML from up-to-date .data before export!
   const data = editor.drawflow.drawflow.Home.data;
   Object.values(data).forEach(n => {
@@ -1846,6 +2439,7 @@ const CTM_DIAL_ROUTE_ID_KEY = {
 function esc(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n'); }
 
 function generatePythonScript() {
+  migrateLegacySalesforceScopeNodes();
   const flow = editor.export();
   const nodes = flow.drawflow.Home.data;
   if (Object.keys(nodes).length === 0) { alert('Flow is empty — add some nodes first.'); return; }
@@ -2607,15 +3201,21 @@ function handleFile(evt) {
             const el = document.getElementById('node-' + k);
             if (el && el.querySelector('.drawflow_content_node') && cfg && cfg.data) {
               el.querySelector('.drawflow_content_node').innerHTML = buildNodeHTML(
-                cfg.data.type,
-                cfg.data.label,
-                cfg.data.outputLabels,
-                cfg.data.notesValue,
-                cfg.data.config,
-                cfg.data.endActions
-              );
-            }
-          }, 100);
+              cfg.data.type,
+              cfg.data.label,
+              cfg.data.outputLabels,
+              cfg.data.notesValue,
+              cfg.data.config,
+              cfg.data.endActions
+    );
+
+    // Auto-resize the notes textarea based on its loaded content
+    const ta = el.querySelector('.node-notes-field');
+    if (ta && window.autosizeNotes) {
+      window.autosizeNotes(ta);
+    }
+  }
+}, 100);
         }
       }, 100);
       console.log('Ready to import object:', obj);
