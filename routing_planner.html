@@ -688,81 +688,6 @@ function getConfigSummary(type, config) {
       if (c.touchType) parts.push(c.touchType === 'first' ? 'First Touch' : 'Last Touch');
       return parts.filter(Boolean).join(' · ') || null;
     }
-    // Salesforce Scope summary (existing from prior)
-    case 'salesforce_scope': {
-      const summaryParts = [];
-      if (Array.isArray(c.sf_sync_timing) && c.sf_sync_timing.length) {
-        const syncLabels = {realtime:'Immediately', call_end:'After Call Ends', trigger:'On Trigger'};
-        summaryParts.push('When to Sync: ' + c.sf_sync_timing.map(opt => syncLabels[opt] || opt).join(', '));
-      }
-      if (Array.isArray(c.sf_data_sync) && c.sf_data_sync.length) {
-        const syncDataLabels = {calls:'Calls',texts:'Texts',recordings:'Recordings',outcomes:'Outcomes',forms:'Forms'};
-        summaryParts.push('Sync: ' + c.sf_data_sync.map(opt => syncDataLabels[opt] || opt).join(', '));
-      }
-      if (c.sf_create_update) {
-        const createUpMap = {create_only:'Create only', update_only:'Update only', create_update:'Create/Update'};
-        summaryParts.push((createUpMap[c.sf_create_update] || c.sf_create_update));
-      }
-      if (c.sf_overwrite) {
-        const overwriteMap = {never:'No Overwrite', always:'Always Overwrite', custom:'Custom Overwrite'};
-        summaryParts.push((overwriteMap[c.sf_overwrite] || c.sf_overwrite));
-      }
-      if (c.sf_object_map) {
-        const objMap = {lead:'Lead',contact:'Contact',opportunity:'Opportunity',account:'Account',custom:'Custom'};
-        summaryParts.push('SF Obj: ' + (objMap[c.sf_object_map] || c.sf_object_map));
-      }
-      if (c.sf_mapping_notes) {
-        let notes = c.sf_mapping_notes.trim();
-        if (notes.length > 40) notes = notes.slice(0, 35) + '...';
-        summaryParts.push('Mapping: ' + notes);
-      }
-      if (c.sf_cti_adapter_used) summaryParts.push('CTI: ' + (c.sf_cti_adapter_used === 'yes' ? 'Yes' : 'No'));
-      if (c.sf_screen_pop_logic) {
-        const popMap = {always:'Pop Always',new_only:'Pop New Only',never:'No Pop',custom:'Pop Custom'};
-        summaryParts.push(popMap[c.sf_screen_pop_logic] || c.sf_screen_pop_logic);
-      }
-      if (c.sf_cti_agent_count) summaryParts.push('Agents: ' + c.sf_cti_agent_count);
-      if (c.sf_cti_notes) {
-        let notes = c.sf_cti_notes.trim();
-        if (notes.length > 40) notes = notes.slice(0, 35) + '...';
-        summaryParts.push('CTI Notes: ' + notes);
-      }
-      return summaryParts.length ? summaryParts.join(' · ') : null;
-    }
-    // === Salesforce Trigger summary ===
-    case 'salesforce_trigger': {
-      const parts = [];
-      if (c.sf_trigger_event) {
-        const evMap = {
-          call_end: 'Call End',
-          call_answered: 'Call Answered',
-          scheduled: 'Scheduled',
-          custom: 'Custom'
-        };
-        parts.push('Event: ' + (evMap[c.sf_trigger_event] || c.sf_trigger_event));
-      }
-      if (c.sf_trigger_delay) parts.push('Delay: ' + c.sf_trigger_delay + 's');
-      if (c.sf_trigger_object) {
-        const objMap = {lead:'Lead',contact:'Contact',opportunity:'Opportunity',account:'Account',custom:'Custom'};
-        parts.push('Obj: ' + (objMap[c.sf_trigger_object] || c.sf_trigger_object));
-      }
-      if (c.sf_trigger_matching) {
-        const matchMap = {
-          create_always:'Create', match_update:'Match/Update', custom:'Custom Logic'
-        };
-        parts.push('*' + (matchMap[c.sf_trigger_matching] || c.sf_trigger_matching));
-      }
-      if (c.sf_trigger_overwrite) {
-        const owMap = {never:'NO overwrite', always:'Overwrite', custom:'Custom'};
-        parts.push(owMap[c.sf_trigger_overwrite] || c.sf_trigger_overwrite);
-      }
-      if (c.sf_trigger_field_mappings) {
-        let mapped = c.sf_trigger_field_mappings.split('\n')[0];
-        if (mapped && mapped.length > 32) mapped = mapped.slice(0,29)+'...';
-        if (mapped) parts.push('Map: ' + mapped);
-      }
-      return parts.length ? parts.join(' · ') : null;
-    }
     default: return null;
   }
 }
@@ -1246,14 +1171,21 @@ const END_ACTION_TYPES = [
   { value:'webhook',            label:'Webhook',           icon:'🌐' },
   { value:'google_conversion',  label:'Google Conversion', icon:'📊' },
   { value:'email_notification', label:'Email Alert',       icon:'📧' },
-  { value:'salesforce_scope', label:'Salesforce Scope', icon:'🔗' },
-  { value:'salesforce_trigger', label:'Salesforce Trigger', icon:'⏱️' },
 ];
 const EA_ICON = Object.fromEntries(END_ACTION_TYPES.map(t=>[t.value,t.icon]));
 
 window.showEndActionsPanel = function(nodeId) {
   currentEANodeId = nodeId;
   const node = editor.getNodeFromId(nodeId);
+  if (node && node.data && Array.isArray(node.data.endActions)) {
+    const cleaned = node.data.endActions.filter(a =>
+      a && a.type !== 'salesforce_trigger' && a.type !== 'salesforce_scope'
+    );
+    if (cleaned.length !== node.data.endActions.length) {
+      node.data.endActions = cleaned;
+      editor.updateNodeDataFromId(nodeId, node.data);
+    }
+  }
   eaSnapshot = JSON.parse(JSON.stringify(node.data.endActions||[]));
   const label = node.data.label || 'Node';
   document.getElementById('endActionsPanelTitle').textContent = `⚡ End Actions — ${label}`;
@@ -1378,88 +1310,6 @@ window.getActionFields = function(type, idx, a) {
       <div class="action-field"><label>Min Duration to Count as Conversion (sec)</label>
         <input type="number" value="${a.min_duration||''}" oninput="window.updateActionField(${idx},'min_duration',this.value)" placeholder="e.g. 60">
       </div>`;
-    case 'salesforce_scope': return `
-  <div class="action-section"><b>Salesforce Sync Settings</b></div>
-  <div class="action-field"><label>When to Sync</label>
-  <select multiple size="3"
-    onchange="window.updateActionField(${idx},'sf_sync_timing',Array.from(this.selectedOptions).map(o=>o.value))">
-    <option value="realtime"   ${(Array.isArray(a.sf_sync_timing)&&a.sf_sync_timing.includes('realtime'))?'selected':''}>Start of Call</option>
-    <option value="call_end"   ${(Array.isArray(a.sf_sync_timing)&&a.sf_sync_timing.includes('call_end'))?'selected':''}>After Call Ends</option>
-    <option value="trigger"    ${(Array.isArray(a.sf_sync_timing)&&a.sf_sync_timing.includes('trigger'))?'selected':''}>On Custom Trigger/Event</option>
-  </select>
-  <div style="font-size:.83em;color:#5a7a9a;">Hold Ctrl/Cmd to select multiple</div>
-  </div>
-  <div class="action-field"><label>What Activities/Data to Sync</label>
-    <select multiple size="4"
-      onchange="window.updateActionField(${idx},'sf_data_sync',Array.from(this.selectedOptions).map(o=>o.value))">
-      <option value="calls"     ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('calls')?'selected':''}>Calls</option>
-      <option value="texts"     ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('texts')?'selected':''}>Texts/SMS</option>
-      <option value="recordings"${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('recordings')?'selected':''}>Call Recordings</option>
-      <option value="outcomes"  ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('outcomes')?'selected':''}>Call Outcomes</option>
-      <option value="forms"     ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('forms')?'selected':''}>Form Fills</option>
-    </select>
-    <div style="font-size:.83em;color:#5a7a9a;">Hold Ctrl/Cmd to select multiple</div>
-  </div>
-  <div class="action-field"><label>Create or Update Records</label>
-    <select onchange="window.updateActionField(${idx},'sf_create_update',this.value)">
-      <option value="">Select...</option>
-      <option value="create_only"    ${a.sf_create_update==='create_only'?'selected':''}>Create only (new leads/records)</option>
-      <option value="update_only"    ${a.sf_create_update==='update_only'?'selected':''}>Update existing only</option>
-      <option value="create_update"  ${a.sf_create_update==='create_update'?'selected':''}>Create if none, update if exists</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Data Overwrite Policy</label>
-    <select onchange="window.updateActionField(${idx},'sf_overwrite',this.value)">
-      <option value="">Select...</option>
-      <option value="never" ${a.sf_overwrite==='never'?'selected':''}>Never overwrite (append only)</option>
-      <option value="always"${a.sf_overwrite==='always'?'selected':''}>Always overwrite with new data</option>
-      <option value="custom"${a.sf_overwrite==='custom'?'selected':''}>Custom/Conditional overwrite</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Map Leads/Calls to</label>
-    <select onchange="window.updateActionField(${idx},'sf_object_map',this.value)">
-      <option value="">Select...</option>
-      <option value="lead"         ${a.sf_object_map==='lead'?'selected':''}>Lead (default)</option>
-      <option value="contact"      ${a.sf_object_map==='contact'?'selected':''}>Contact</option>
-      <option value="opportunity"  ${a.sf_object_map==='opportunity'?'selected':''}>Opportunity</option>
-      <option value="account"      ${a.sf_object_map==='account'?'selected':''}>Account</option>
-      <option value="custom"       ${a.sf_object_map==='custom'?'selected':''}>Custom Object</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Field Mapping Notes</label>
-    <textarea rows="2" placeholder="Describe any custom field mapping, triggers, special logic, etc."
-              oninput="window.updateActionField(${idx},'sf_mapping_notes',this.value)">${a.sf_mapping_notes||''}</textarea>
-  </div>
-
-  <div class="action-section" style="margin-top:18px;"><b>Salesforce CTI Softphone Configuration</b></div>
-
-  <div class="action-field"><label>Use Salesforce CTI Softphone Adapter?</label>
-    <select onchange="window.updateActionField(${idx},'sf_cti_adapter_used',this.value)">
-      <option value="">Select...</option>
-      <option value="yes" ${a.sf_cti_adapter_used==='yes'?'selected':''}>Yes</option>
-      <option value="no"  ${a.sf_cti_adapter_used==='no'?'selected':''}>No</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Screen Pop Logic</label>
-    <select onchange="window.updateActionField(${idx},'sf_screen_pop_logic',this.value)">
-      <option value="">Select...</option>
-      <option value="always"    ${a.sf_screen_pop_logic==='always'?'selected':''}>Always pop matching record</option>
-      <option value="new_only"  ${a.sf_screen_pop_logic==='new_only'?'selected':''}>Only for new callers/records</option>
-      <option value="never"     ${a.sf_screen_pop_logic==='never'?'selected':''}>Never (no screen pop)</option>
-      <option value="custom"    ${a.sf_screen_pop_logic==='custom'?'selected':''}>Custom/Conditional logic</option>
-    </select>
-  </div>
-  <div class="action-field"><label># of CTI Softphone Agents</label>
-    <input type="number" min="1" step="1"
-      value="${a.sf_cti_agent_count||''}"
-      oninput="window.updateActionField(${idx},'sf_cti_agent_count',this.value)"
-      placeholder="e.g. 5">
-  </div>
-  <div class="action-field"><label>CTI Softphone Notes</label>
-    <textarea rows="2" placeholder="Describe any special call flows, agent requirements, etc."
-              oninput="window.updateActionField(${idx},'sf_cti_notes',this.value)">${a.sf_cti_notes||''}</textarea>
-  </div>
-`;
     case 'email_notification': return `
       <div class="action-field"><label>Recipients (comma-separated)</label>
         <input type="text" value="${a.recipients||''}" oninput="window.updateActionField(${idx},'recipients',this.value)" placeholder="email@example.com">
@@ -1482,60 +1332,6 @@ window.getActionFields = function(type, idx, a) {
           <label for="inc_${idx}">Include caller info, duration, recording link</label>
         </div>
       </div>`;
-    case 'salesforce_trigger': return `
-  <div class="action-section"><b>Salesforce Trigger Configuration</b></div>
-  <div class="action-field"><label>Trigger Event</label>
-    <select onchange="window.updateActionField(${idx},'sf_trigger_event',this.value)">
-      <option value="">Select...</option>
-      <option value="call_end"      ${a.sf_trigger_event==='call_end'?'selected':''}>After Call Ends</option>
-      <option value="call_answered" ${a.sf_trigger_event==='call_answered'?'selected':''}>After Call Answered</option>
-      <option value="scheduled"     ${a.sf_trigger_event==='scheduled'?'selected':''}>At Scheduled Time</option>
-      <option value="custom"        ${a.sf_trigger_event==='custom'?'selected':''}>Custom (see notes)</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Trigger Delay</label>
-    <input type="number" min="0" placeholder="Seconds (e.g. 60)"
-      value="${a.sf_trigger_delay||''}"
-      oninput="window.updateActionField(${idx},'sf_trigger_delay',this.value)">
-    <div style="font-size:.83em;color:#5a7a9a;">0 = immediately; for scheduled triggers, set to minute delay</div>
-  </div>
-  <div class="action-field"><label>Salesforce Object to Sync</label>
-    <select onchange="window.updateActionField(${idx},'sf_trigger_object',this.value)">
-      <option value="">Select...</option>
-      <option value="lead"         ${a.sf_trigger_object==='lead'?'selected':''}>Lead</option>
-      <option value="contact"      ${a.sf_trigger_object==='contact'?'selected':''}>Contact</option>
-      <option value="opportunity"  ${a.sf_trigger_object==='opportunity'?'selected':''}>Opportunity</option>
-      <option value="account"      ${a.sf_trigger_object==='account'?'selected':''}>Account</option>
-      <option value="custom"       ${a.sf_trigger_object==='custom'?'selected':''}>Custom Object</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Matching/Creation Behavior</label>
-    <select onchange="window.updateActionField(${idx},'sf_trigger_matching',this.value)">
-      <option value="">Select...</option>
-      <option value="create_always"  ${a.sf_trigger_matching==='create_always'?'selected':''}>Always Create New</option>
-      <option value="match_update"   ${a.sf_trigger_matching==='match_update'?'selected':''}>Match Existing, Update</option>
-      <option value="custom"         ${a.sf_trigger_matching==='custom'?'selected':''}>Custom Logic (see notes)</option>
-    </select>
-    <div style="font-size:.83em;color:#5a7a9a;">(see <a href='https://calltrackingmetrics.zendesk.com/hc/en-us/articles/6052709883533-Salesforce-Record-Creation-and-Matching' target='_blank'>record matching guide</a>)</div>
-  </div>
-  <div class="action-field"><label>Overwrite Existing Salesforce Data?</label>
-    <select onchange="window.updateActionField(${idx},'sf_trigger_overwrite',this.value)">
-      <option value="">Select...</option>
-      <option value="never"   ${a.sf_trigger_overwrite==='never'?'selected':''}>Never (append only)</option>
-      <option value="always"  ${a.sf_trigger_overwrite==='always'?'selected':''}>Always (full overwrite)</option>
-      <option value="custom"  ${a.sf_trigger_overwrite==='custom'?'selected':''}>Custom/Conditional</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Field Mappings</label>
-    <textarea rows="3" placeholder="e.g. custom_field1=call.caller_id, custom_field2=call.campaign"
-      oninput="window.updateActionField(${idx},'sf_trigger_field_mappings',this.value)">${a.sf_trigger_field_mappings||''}</textarea>
-    <div style="font-size:.83em;color:#5a7a9a;">1 per line, field=value</div>
-  </div>
-  <div class="action-field"><label>Additional Notes</label>
-    <textarea rows="2"
-      oninput="window.updateActionField(${idx},'sf_trigger_notes',this.value)">${a.sf_trigger_notes||''}</textarea>
-  </div>
-`;
     default: return '<p style="color:#5a7a9a;font-size:.8rem">Select an action type above.</p>';
   }
 };
@@ -1577,33 +1373,6 @@ window.updateActionType = function(idx, type) {
         include_details: true
       };
       break;
-  case 'salesforce_scope':
-    actions[idx] = {
-      type: 'salesforce_scope',
-      sf_sync_timing: [],   // Make sure this is an empty array here!
-      sf_data_sync: [],
-      sf_create_update: '',
-      sf_overwrite: '',
-      sf_object_map: '',
-      sf_mapping_notes: '',
-      sf_cti_adapter_used: '',
-      sf_screen_pop_logic: '',
-      sf_cti_agent_count: '',
-      sf_cti_notes: ''
-    };
-    break;
-  case 'salesforce_trigger':
-    actions[idx] = {
-    type: 'salesforce_trigger',
-    sf_trigger_event: '',
-    sf_trigger_delay: '',
-    sf_trigger_object: '',
-    sf_trigger_matching: '',
-    sf_trigger_overwrite: '',
-    sf_trigger_field_mappings: '',
-    sf_trigger_notes: ''
-    };
-  break;
     // You can add new cases here if you add future end action types.
   }
   setEANodeActions(actions);
