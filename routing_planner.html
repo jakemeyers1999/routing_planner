@@ -55,6 +55,7 @@
     /* Supernova Lime — terminal actions */
     .drawflow-node[data-node="TrackingSource"]  { border:2px solid #01BDF6!important; background:#16294F!important; }
     .drawflow-node[data-node="EndAction"]      { border:2px solid #D6DA01!important; background:#0d1200; }
+    .drawflow-node[data-node="SalesforceScope"]{ border:2px solid #01BDF6!important; background:#081727; }
 
     /* Port hover glow */
     .drawflow .output:hover, .drawflow .input:hover { box-shadow:0 0 8px 2px #01BDF6; }
@@ -276,6 +277,7 @@ textarea.node-notes-field:focus {
       <option value="Voicemail">Voicemail</option>
       <option value="NoAnswer">No Answer Branch</option>
       <option value="EndAction">End Action</option>
+      <option value="SalesforceScope">Salesforce Scope</option>
       <option value="TrackingSource">Tracking Source</option>
 
     </select>
@@ -374,7 +376,8 @@ const LABEL_MAP = {
   TrackingSource: 'Tracking Source',
   TrackingNumber:'Tracking Number', IVR:'IVR Menu', Queue:'Queue',
   SmartRouter:'Smart Router', ReceivingNumber:'Receiving Number',
-  Voicemail:'Voicemail', NoAnswer:'No Answer Branch', EndAction:'End Action'
+  Voicemail:'Voicemail', NoAnswer:'No Answer Branch', EndAction:'End Action',
+  SalesforceScope:'Salesforce Scope'
 };
 
 const NODE_TYPES_LIST = [
@@ -387,6 +390,7 @@ const NODE_TYPES_LIST = [
   {value:'Voicemail',label:'Voicemail'},
   {value:'NoAnswer',label:'No Answer Branch'},
   {value:'EndAction',label:'End Action'},
+  {value:'SalesforceScope',label:'Salesforce Scope'},
   {value:'IVR',label:'IVR Menu'}, {value:'Queue',label:'Queue'},
   {value:'SmartRouter',label:'Smart Router'}, {value:'ReceivingNumber',label:'Receiving Number'},
   {value:'Voicemail',label:'Voicemail'}, {value:'NoAnswer',label:'No Answer Branch'},
@@ -567,6 +571,67 @@ const NODE_CONFIG_SCHEMA = {
   },
 
   EndAction: { title:'End Action', sections:[] },  // handled by its own panel
+  SalesforceScope: {
+    title: '🔗 Salesforce Scope — Configuration Scope',
+    sections: [
+      { title: 'Salesforce Sync Settings', fields: [
+        { key:'sf_sync_timing', label:'When to Sync', type:'multiselect',
+          opts:[
+            {v:'realtime', l:'Start of Call'},
+            {v:'call_end', l:'After Call Ends'},
+            {v:'trigger',  l:'On Custom Trigger/Event'}
+          ], rows:3 },
+        { key:'sf_data_sync', label:'What Activities/Data to Sync', type:'multiselect',
+          opts:[
+            {v:'calls',      l:'Calls'},
+            {v:'texts',      l:'Texts/SMS'},
+            {v:'recordings', l:'Call Recordings'},
+            {v:'outcomes',   l:'Call Outcomes'},
+            {v:'forms',      l:'Form Fills'}
+          ], rows:5 },
+        { key:'sf_create_update', label:'Create or Update Records', type:'select',
+          opts:[
+            {v:'', l:'Select...'},
+            {v:'create_only',   l:'Create only (new leads/records)'},
+            {v:'update_only',   l:'Update existing only'},
+            {v:'create_update', l:'Create if none, update if exists'}
+          ] },
+        { key:'sf_overwrite', label:'Data Overwrite Policy', type:'select',
+          opts:[
+            {v:'', l:'Select...'},
+            {v:'never',  l:'Never overwrite (append only)'},
+            {v:'always', l:'Always overwrite with new data'},
+            {v:'custom', l:'Custom/Conditional overwrite'}
+          ] },
+        { key:'sf_object_map', label:'Map Leads/Calls to', type:'select',
+          opts:[
+            {v:'', l:'Select...'},
+            {v:'lead',        l:'Lead (default)'},
+            {v:'contact',     l:'Contact'},
+            {v:'opportunity', l:'Opportunity'},
+            {v:'account',     l:'Account'},
+            {v:'custom',      l:'Custom Object'}
+          ] },
+        { key:'sf_mapping_notes', label:'Field Mapping Notes', type:'textarea',
+          ph:'Describe any custom field mapping, triggers, special logic, etc.' }
+      ]},
+      { title: 'Salesforce CTI Softphone Configuration', fields: [
+        { key:'sf_cti_adapter_used', label:'Use Salesforce CTI Softphone Adapter?', type:'select',
+          opts:[{v:'', l:'Select...'}, {v:'yes', l:'Yes'}, {v:'no', l:'No'}] },
+        { key:'sf_screen_pop_logic', label:'Screen Pop Logic', type:'select',
+          opts:[
+            {v:'', l:'Select...'},
+            {v:'always',   l:'Always pop matching record'},
+            {v:'new_only', l:'Only for new callers/records'},
+            {v:'never',    l:'Never (no screen pop)'},
+            {v:'custom',   l:'Custom/Conditional logic'}
+          ] },
+        { key:'sf_cti_agent_count', label:'# of CTI Softphone Agents', type:'number', ph:'e.g. 5' },
+        { key:'sf_cti_notes', label:'CTI Softphone Notes', type:'textarea',
+          ph:'Describe any special call flows, agent requirements, etc.' }
+      ]}
+    ]
+  },
   TrackingSource: {
     title: '📈 Tracking Source — Configuration Scope',
     sections: [
@@ -689,44 +754,18 @@ function getConfigSummary(type, config) {
       return parts.filter(Boolean).join(' · ') || null;
     }
     // Salesforce Scope summary (existing from prior)
+    case 'SalesforceScope':
     case 'salesforce_scope': {
       const summaryParts = [];
-      if (Array.isArray(c.sf_sync_timing) && c.sf_sync_timing.length) {
-        const syncLabels = {realtime:'Immediately', call_end:'After Call Ends', trigger:'On Trigger'};
-        summaryParts.push('When to Sync: ' + c.sf_sync_timing.map(opt => syncLabels[opt] || opt).join(', '));
-      }
-      if (Array.isArray(c.sf_data_sync) && c.sf_data_sync.length) {
-        const syncDataLabels = {calls:'Calls',texts:'Texts',recordings:'Recordings',outcomes:'Outcomes',forms:'Forms'};
-        summaryParts.push('Sync: ' + c.sf_data_sync.map(opt => syncDataLabels[opt] || opt).join(', '));
-      }
-      if (c.sf_create_update) {
-        const createUpMap = {create_only:'Create only', update_only:'Update only', create_update:'Create/Update'};
-        summaryParts.push((createUpMap[c.sf_create_update] || c.sf_create_update));
-      }
       if (c.sf_overwrite) {
         const overwriteMap = {never:'No Overwrite', always:'Always Overwrite', custom:'Custom Overwrite'};
-        summaryParts.push((overwriteMap[c.sf_overwrite] || c.sf_overwrite));
+        summaryParts.push('Overwrite: ' + (overwriteMap[c.sf_overwrite] || c.sf_overwrite));
       }
       if (c.sf_object_map) {
         const objMap = {lead:'Lead',contact:'Contact',opportunity:'Opportunity',account:'Account',custom:'Custom'};
-        summaryParts.push('SF Obj: ' + (objMap[c.sf_object_map] || c.sf_object_map));
-      }
-      if (c.sf_mapping_notes) {
-        let notes = c.sf_mapping_notes.trim();
-        if (notes.length > 40) notes = notes.slice(0, 35) + '...';
-        summaryParts.push('Mapping: ' + notes);
+        summaryParts.push('Object: ' + (objMap[c.sf_object_map] || c.sf_object_map));
       }
       if (c.sf_cti_adapter_used) summaryParts.push('CTI: ' + (c.sf_cti_adapter_used === 'yes' ? 'Yes' : 'No'));
-      if (c.sf_screen_pop_logic) {
-        const popMap = {always:'Pop Always',new_only:'Pop New Only',never:'No Pop',custom:'Pop Custom'};
-        summaryParts.push(popMap[c.sf_screen_pop_logic] || c.sf_screen_pop_logic);
-      }
-      if (c.sf_cti_agent_count) summaryParts.push('Agents: ' + c.sf_cti_agent_count);
-      if (c.sf_cti_notes) {
-        let notes = c.sf_cti_notes.trim();
-        if (notes.length > 40) notes = notes.slice(0, 35) + '...';
-        summaryParts.push('CTI Notes: ' + notes);
-      }
       return summaryParts.length ? summaryParts.join(' · ') : null;
     }
     // === Salesforce Trigger summary ===
@@ -766,6 +805,21 @@ function getConfigSummary(type, config) {
     default: return null;
   }
 }
+
+function getNodeSummary(type, config, endActions) {
+  const parts = [];
+  const configSummary = getConfigSummary(type, config);
+  if (configSummary) parts.push(configSummary);
+
+  const actions = Array.isArray(endActions) ? endActions : [];
+  const salesforceParts = actions
+    .filter(a => a && a.type === 'salesforce_trigger')
+    .map(a => getConfigSummary(a.type, a))
+    .filter(Boolean);
+  if (salesforceParts.length) parts.push('SF: ' + salesforceParts.join(' · '));
+
+  return parts.length ? parts.join(' · ') : null;
+}
 // ─────────────────────────────────────────────
 // Drawflow init
 // ─────────────────────────────────────────────
@@ -798,7 +852,62 @@ document.addEventListener('keydown', function(e) {
   // Prevent all other node-deleting cases (including plain or Cmd+Delete/Backspace)
 });
 
-let nodeCount = { TrackingSource:1,TrackingNumber:1,IVR:1,Queue:1,SmartRouter:1,ReceivingNumber:1,Voicemail:1,NoAnswer:1,EndAction:1 };
+let nodeCount = { TrackingSource:1,TrackingNumber:1,IVR:1,Queue:1,SmartRouter:1,ReceivingNumber:1,Voicemail:1,NoAnswer:1,EndAction:1,SalesforceScope:1 };
+
+function migrateLegacySalesforceScopeNodes() {
+  const data = editor.drawflow && editor.drawflow.drawflow && editor.drawflow.drawflow.Home
+    ? editor.drawflow.drawflow.Home.data
+    : null;
+  if (!data) return;
+
+  const nodes = Object.values(data);
+  let migrated = false;
+
+  nodes.forEach(n => {
+    const d = n.data || {};
+    const actions = Array.isArray(d.endActions) ? d.endActions : [];
+    const scopeActions = actions.filter(a => a && a.type === 'salesforce_scope');
+    if (!scopeActions.length) return;
+
+    d.endActions = actions.filter(a => !(a && a.type === 'salesforce_scope'));
+    editor.updateNodeDataFromId(n.id, d);
+
+    scopeActions.forEach((scopeAction, idx) => {
+      const config = { ...scopeAction };
+      delete config.type;
+      const label = `Salesforce Scope ${nodeCount.SalesforceScope++}`;
+      const notes = generateNotesFromConfig('SalesforceScope', config);
+      const sfData = {
+        type: 'SalesforceScope',
+        label,
+        depth: (d.depth || 1) + 1,
+        outputLabels: [''],
+        config,
+        notesValue: notes,
+        endActions: []
+      };
+      const x = (n.pos_x || 0) + 300;
+      const y = (n.pos_y || 0) + (idx * 150);
+      const html = buildNodeHTML('SalesforceScope', label, sfData.outputLabels, notes, config, []);
+      const newId = editor.addNode('SalesforceScope', 0, 1, x, y, '', sfData, html);
+
+      setTimeout(() => {
+        const el = document.getElementById('node-' + newId);
+        if (el) el.setAttribute('data-node', 'SalesforceScope');
+      }, 10);
+
+      // No incoming connection: Salesforce Scope has 0 inputs now
+      migrated = true;
+    });
+  });
+
+  if (migrated) {
+    setTimeout(() => {
+      const refreshed = editor.drawflow.drawflow.Home.data;
+      Object.values(refreshed).forEach(node => editor.updateConnectionNodes('node-' + node.id));
+    }, 20);
+  }
+}
 
 // ─────────────────────────────────────────────
 // Node HTML builder
@@ -822,7 +931,7 @@ function buildNodeHTML(type, label, outputLabels, notesValue, configData, endAct
 </div>`;
   }
 
-  const summary = getConfigSummary(type, configData);
+  const summary = getNodeSummary(type, configData, endActions);
   const summaryHTML = summary
     ? `<div class="node-config-summary"><span class="config-badge configured">⚙ ${summary}</span></div>`
     : `<div class="node-config-summary"></div>`;
@@ -834,7 +943,7 @@ function buildNodeHTML(type, label, outputLabels, notesValue, configData, endAct
   let eaBtnText = '⚡ End Actions';
   let eaBtnClass = 'node-footer-btn end-actions-btn';
   if (actions.length > 0) {
-    const END_TYPE_ICON = { trigger:'⚡', webhook:'🌐', google_conversion:'📊', email_notification:'📧' };
+    const END_TYPE_ICON = { trigger:'⚡', webhook:'🌐', google_conversion:'📊', email_notification:'📧', salesforce_trigger:'⏱️' };
     const icons = [...new Set(actions.map(a => END_TYPE_ICON[a.type] || '⚡'))];
     eaBtnText = icons.join('') + ' ' + (actions.length > 1 ? actions.length + ' actions ✓' : (actions[0]?.type||'action') + ' ✓');
     eaBtnClass += ' has-actions';
@@ -852,7 +961,7 @@ function buildNodeHTML(type, label, outputLabels, notesValue, configData, endAct
     ${summaryHTML}
     ${outputInputsHTML}
     <textarea class="node-notes-field" placeholder="Notes / scope details..." rows="2"
-      oninput="window.saveNodeNotes(this)">${notes}</textarea>
+      oninput="window.autosizeNotes(this);window.saveNodeNotes(this)">${notes}</textarea>
   </div>
   <div class="node-footer">
     ${configureBtn}
@@ -879,6 +988,8 @@ function addNodeWithDepth(type, parentId, fromOutputIdx) {
   else if (type === 'SmartRouter'){ outputs=3; inputs=1; }
   else if (type === 'NoAnswer')  { outputs=1; inputs=1; }
   else if (type === 'EndAction') { outputs=0; inputs=1; }
+  else if (type === 'SalesforceScope') { outputs=1; inputs=0; }
+
 
   const outputLabels = Array(outputs).fill('');
   let x=200, y=120, depth=1;
@@ -895,9 +1006,13 @@ function addNodeWithDepth(type, parentId, fromOutputIdx) {
   const html = buildNodeHTML(type, label, outputLabels, '', {}, []);
   const newId = editor.addNode(String(type), inputs, outputs, x, y, '', data, html);
 
-  setTimeout(()=>{
-    const el = document.getElementById('node-'+newId);
-    if (el) el.setAttribute('data-node', type);
+  setTimeout(() => {
+    const el = document.getElementById('node-' + newId);
+    if (el) {
+      el.setAttribute('data-node', type);
+      const ta = el.querySelector('.node-notes-field');
+      if (ta && window.autosizeNotes) window.autosizeNotes(ta);
+    }
   }, 10);
 
   if (parentId !== null && fromOutputIdx) {
@@ -909,6 +1024,29 @@ function addNodeWithDepth(type, parentId, fromOutputIdx) {
 // ─────────────────────────────────────────────
 // Inline field handlers
 // ─────────────────────────────────────────────
+// Automatically resize notes textarea up to 4 visible lines
+window.autosizeNotes = function(ta) {
+  if (!ta) return;
+
+  // Reset height so scrollHeight is for current content
+  ta.style.height = 'auto';
+
+  const cs = window.getComputedStyle(ta);
+  const lineHeight = parseFloat(cs.lineHeight) || 16;
+  const maxLines = 4;
+
+  const border =
+    (parseFloat(cs.borderTopWidth)  || 0) +
+    (parseFloat(cs.borderBottomWidth) || 0);
+  const padding =
+    (parseFloat(cs.paddingTop)  || 0) +
+    (parseFloat(cs.paddingBottom) || 0);
+
+  const maxHeight = lineHeight * maxLines + padding + border;
+
+  const newHeight = Math.min(ta.scrollHeight, maxHeight);
+  ta.style.height = newHeight + 'px';
+};
 window.saveNodeNotes = function(ta) {
   try {
     const id = parseInt(ta.closest('.drawflow-node').id.replace('node-',''));
@@ -1056,6 +1194,13 @@ function renderConfigFields(type, config) {
         html += `<select data-key="${f.key}" onchange="window.onConfigChange('${f.key}',this.value);window.refreshConfigVisibility()">`;
         f.opts.forEach(o => html += `<option value="${o.v}" ${curVal===o.v?'selected':''}>${o.l}</option>`);
         html += `</select>`;
+      } else if (f.type === 'multiselect') {
+        const curVals = Array.isArray(val) ? val : (Array.isArray(f.default) ? f.default : []);
+        html += `<select data-key="${f.key}" multiple size="${f.rows || 4}"
+          onchange="window.onConfigChange('${f.key}',Array.from(this.selectedOptions).map(o=>o.value))">`;
+        (f.opts || []).forEach(o => html += `<option value="${o.v}" ${curVals.includes(o.v)?'selected':''}>${o.l}</option>`);
+        html += `</select>`;
+        html += `<div class="field-hint">Hold Ctrl/Cmd to select multiple</div>`;
       } else if (f.type === 'check') {
         const checked = val !== undefined ? val : (f.default || false);
         html += `<div class="checkbox-row">
@@ -1182,6 +1327,22 @@ function generateNotesFromConfig(type, config) {
       add('Caller ID',          'callerId',  {caller:"Show Caller's Number",tracking:'Show Tracking Number',custom:'Custom Number'});
       add('Custom Caller ID',   'customCallerId');
       break;
+    case 'SalesforceScope':
+    case 'salesforce_scope': {
+      const syncTimingMap = {realtime:'Start of Call', call_end:'After Call Ends', trigger:'On Custom Trigger/Event'};
+      const syncDataMap = {calls:'Calls', texts:'Texts/SMS', recordings:'Call Recordings', outcomes:'Call Outcomes', forms:'Form Fills'};
+      if (Array.isArray(c.sf_sync_timing) && c.sf_sync_timing.length) lines.push('When to Sync: ' + c.sf_sync_timing.map(v => syncTimingMap[v] || v).join(', '));
+      if (Array.isArray(c.sf_data_sync) && c.sf_data_sync.length) lines.push('Sync Data: ' + c.sf_data_sync.map(v => syncDataMap[v] || v).join(', '));
+      add('Create/Update',      'sf_create_update', {create_only:'Create only', update_only:'Update existing', create_update:'Create/Update'});
+      add('Overwrite Policy',   'sf_overwrite', {never:'Never overwrite', always:'Always overwrite', custom:'Custom/Conditional'});
+      add('Object Mapping',     'sf_object_map', {lead:'Lead', contact:'Contact', opportunity:'Opportunity', account:'Account', custom:'Custom'});
+      add('Field Mapping Notes','sf_mapping_notes');
+      add('CTI Adapter',        'sf_cti_adapter_used', {yes:'Yes', no:'No'});
+      add('Screen Pop Logic',   'sf_screen_pop_logic', {always:'Always', new_only:'New callers only', never:'Never', custom:'Custom'});
+      add('CTI Agent Count',    'sf_cti_agent_count');
+      add('CTI Notes',          'sf_cti_notes');
+      break;
+    }
   }
   return lines.join('\n');
 }
@@ -1192,7 +1353,8 @@ window.saveNodeConfig = function() {
   if (!n) return;
   const type = n.data.type;
   const config = n.data.config || {};
-  const summary = getConfigSummary(type, config);
+  const configSummary = getConfigSummary(type, config);
+  const summary = getNodeSummary(type, config, n.data.endActions || []);
 
   // Auto-populate notes field with human-readable config summary
   const notesText = generateNotesFromConfig(type, config);
@@ -1213,11 +1375,14 @@ window.saveNodeConfig = function() {
     // Update notes textarea
     if (notesText) {
       const ta = nodeEl.querySelector('.node-notes-field');
-      if (ta) ta.value = notesText;
+      if (ta) {
+        ta.value = notesText;
+        if (window.autosizeNotes) window.autosizeNotes(ta);
+      }
     }
     // Mark configure button as configured
     const cfgBtn = nodeEl.querySelector('.node-footer-btn:not(.end-actions-btn):not(.copy-btn)');
-    if (cfgBtn) cfgBtn.classList.toggle('configured', !!summary);
+    if (cfgBtn) cfgBtn.classList.toggle('configured', !!configSummary);
   }
   configSnapshot = null;
   document.getElementById('nodeConfigPanel').style.display = 'none';
@@ -1246,7 +1411,6 @@ const END_ACTION_TYPES = [
   { value:'webhook',            label:'Webhook',           icon:'🌐' },
   { value:'google_conversion',  label:'Google Conversion', icon:'📊' },
   { value:'email_notification', label:'Email Alert',       icon:'📧' },
-  { value:'salesforce_scope', label:'Salesforce Scope', icon:'🔗' },
   { value:'salesforce_trigger', label:'Salesforce Trigger', icon:'⏱️' },
 ];
 const EA_ICON = Object.fromEntries(END_ACTION_TYPES.map(t=>[t.value,t.icon]));
@@ -1290,6 +1454,14 @@ window.saveEndActions = function() {
           btn.innerHTML = `${icons} ${summary} ✓`;
           btn.classList.add('has-actions');
         }
+      }
+
+      const summaryDiv = nodeEl.querySelector('.node-config-summary');
+      if (summaryDiv && node && node.data) {
+        const summary = getNodeSummary(node.data.type, node.data.config || {}, actions);
+        summaryDiv.innerHTML = summary
+          ? `<span class="config-badge configured">⚙ ${summary}</span>`
+          : '';
       }
     }
   }
@@ -1378,88 +1550,6 @@ window.getActionFields = function(type, idx, a) {
       <div class="action-field"><label>Min Duration to Count as Conversion (sec)</label>
         <input type="number" value="${a.min_duration||''}" oninput="window.updateActionField(${idx},'min_duration',this.value)" placeholder="e.g. 60">
       </div>`;
-    case 'salesforce_scope': return `
-  <div class="action-section"><b>Salesforce Sync Settings</b></div>
-  <div class="action-field"><label>When to Sync</label>
-  <select multiple size="3"
-    onchange="window.updateActionField(${idx},'sf_sync_timing',Array.from(this.selectedOptions).map(o=>o.value))">
-    <option value="realtime"   ${(Array.isArray(a.sf_sync_timing)&&a.sf_sync_timing.includes('realtime'))?'selected':''}>Start of Call</option>
-    <option value="call_end"   ${(Array.isArray(a.sf_sync_timing)&&a.sf_sync_timing.includes('call_end'))?'selected':''}>After Call Ends</option>
-    <option value="trigger"    ${(Array.isArray(a.sf_sync_timing)&&a.sf_sync_timing.includes('trigger'))?'selected':''}>On Custom Trigger/Event</option>
-  </select>
-  <div style="font-size:.83em;color:#5a7a9a;">Hold Ctrl/Cmd to select multiple</div>
-  </div>
-  <div class="action-field"><label>What Activities/Data to Sync</label>
-    <select multiple size="4"
-      onchange="window.updateActionField(${idx},'sf_data_sync',Array.from(this.selectedOptions).map(o=>o.value))">
-      <option value="calls"     ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('calls')?'selected':''}>Calls</option>
-      <option value="texts"     ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('texts')?'selected':''}>Texts/SMS</option>
-      <option value="recordings"${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('recordings')?'selected':''}>Call Recordings</option>
-      <option value="outcomes"  ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('outcomes')?'selected':''}>Call Outcomes</option>
-      <option value="forms"     ${Array.isArray(a.sf_data_sync)&&a.sf_data_sync.includes('forms')?'selected':''}>Form Fills</option>
-    </select>
-    <div style="font-size:.83em;color:#5a7a9a;">Hold Ctrl/Cmd to select multiple</div>
-  </div>
-  <div class="action-field"><label>Create or Update Records</label>
-    <select onchange="window.updateActionField(${idx},'sf_create_update',this.value)">
-      <option value="">Select...</option>
-      <option value="create_only"    ${a.sf_create_update==='create_only'?'selected':''}>Create only (new leads/records)</option>
-      <option value="update_only"    ${a.sf_create_update==='update_only'?'selected':''}>Update existing only</option>
-      <option value="create_update"  ${a.sf_create_update==='create_update'?'selected':''}>Create if none, update if exists</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Data Overwrite Policy</label>
-    <select onchange="window.updateActionField(${idx},'sf_overwrite',this.value)">
-      <option value="">Select...</option>
-      <option value="never" ${a.sf_overwrite==='never'?'selected':''}>Never overwrite (append only)</option>
-      <option value="always"${a.sf_overwrite==='always'?'selected':''}>Always overwrite with new data</option>
-      <option value="custom"${a.sf_overwrite==='custom'?'selected':''}>Custom/Conditional overwrite</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Map Leads/Calls to</label>
-    <select onchange="window.updateActionField(${idx},'sf_object_map',this.value)">
-      <option value="">Select...</option>
-      <option value="lead"         ${a.sf_object_map==='lead'?'selected':''}>Lead (default)</option>
-      <option value="contact"      ${a.sf_object_map==='contact'?'selected':''}>Contact</option>
-      <option value="opportunity"  ${a.sf_object_map==='opportunity'?'selected':''}>Opportunity</option>
-      <option value="account"      ${a.sf_object_map==='account'?'selected':''}>Account</option>
-      <option value="custom"       ${a.sf_object_map==='custom'?'selected':''}>Custom Object</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Field Mapping Notes</label>
-    <textarea rows="2" placeholder="Describe any custom field mapping, triggers, special logic, etc."
-              oninput="window.updateActionField(${idx},'sf_mapping_notes',this.value)">${a.sf_mapping_notes||''}</textarea>
-  </div>
-
-  <div class="action-section" style="margin-top:18px;"><b>Salesforce CTI Softphone Configuration</b></div>
-
-  <div class="action-field"><label>Use Salesforce CTI Softphone Adapter?</label>
-    <select onchange="window.updateActionField(${idx},'sf_cti_adapter_used',this.value)">
-      <option value="">Select...</option>
-      <option value="yes" ${a.sf_cti_adapter_used==='yes'?'selected':''}>Yes</option>
-      <option value="no"  ${a.sf_cti_adapter_used==='no'?'selected':''}>No</option>
-    </select>
-  </div>
-  <div class="action-field"><label>Screen Pop Logic</label>
-    <select onchange="window.updateActionField(${idx},'sf_screen_pop_logic',this.value)">
-      <option value="">Select...</option>
-      <option value="always"    ${a.sf_screen_pop_logic==='always'?'selected':''}>Always pop matching record</option>
-      <option value="new_only"  ${a.sf_screen_pop_logic==='new_only'?'selected':''}>Only for new callers/records</option>
-      <option value="never"     ${a.sf_screen_pop_logic==='never'?'selected':''}>Never (no screen pop)</option>
-      <option value="custom"    ${a.sf_screen_pop_logic==='custom'?'selected':''}>Custom/Conditional logic</option>
-    </select>
-  </div>
-  <div class="action-field"><label># of CTI Softphone Agents</label>
-    <input type="number" min="1" step="1"
-      value="${a.sf_cti_agent_count||''}"
-      oninput="window.updateActionField(${idx},'sf_cti_agent_count',this.value)"
-      placeholder="e.g. 5">
-  </div>
-  <div class="action-field"><label>CTI Softphone Notes</label>
-    <textarea rows="2" placeholder="Describe any special call flows, agent requirements, etc."
-              oninput="window.updateActionField(${idx},'sf_cti_notes',this.value)">${a.sf_cti_notes||''}</textarea>
-  </div>
-`;
     case 'email_notification': return `
       <div class="action-field"><label>Recipients (comma-separated)</label>
         <input type="text" value="${a.recipients||''}" oninput="window.updateActionField(${idx},'recipients',this.value)" placeholder="email@example.com">
@@ -1577,21 +1667,6 @@ window.updateActionType = function(idx, type) {
         include_details: true
       };
       break;
-  case 'salesforce_scope':
-    actions[idx] = {
-      type: 'salesforce_scope',
-      sf_sync_timing: [],   // Make sure this is an empty array here!
-      sf_data_sync: [],
-      sf_create_update: '',
-      sf_overwrite: '',
-      sf_object_map: '',
-      sf_mapping_notes: '',
-      sf_cti_adapter_used: '',
-      sf_screen_pop_logic: '',
-      sf_cti_agent_count: '',
-      sf_cti_notes: ''
-    };
-    break;
   case 'salesforce_trigger':
     actions[idx] = {
     type: 'salesforce_trigger',
@@ -1757,6 +1832,7 @@ editor.on('nodeMoved', () => setTimeout(snapToGrid, 10));
 // ─────────────────────────────────────────────
 editor.on('import', function() {
   setTimeout(function() {
+    migrateLegacySalesforceScopeNodes();
     snapToGrid();
     const data = editor.drawflow.drawflow.Home.data;
     Object.values(data).forEach(n => {
@@ -1784,6 +1860,7 @@ editor.on('import', function() {
 // Save / Load
 // ─────────────────────────────────────────────
 function saveFlow() {
+  migrateLegacySalesforceScopeNodes();
   // Update each node's HTML from up-to-date .data before export!
   const data = editor.drawflow.drawflow.Home.data;
   Object.values(data).forEach(n => {
@@ -1846,6 +1923,7 @@ const CTM_DIAL_ROUTE_ID_KEY = {
 function esc(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n'); }
 
 function generatePythonScript() {
+  migrateLegacySalesforceScopeNodes();
   const flow = editor.export();
   const nodes = flow.drawflow.Home.data;
   if (Object.keys(nodes).length === 0) { alert('Flow is empty — add some nodes first.'); return; }
@@ -2607,15 +2685,21 @@ function handleFile(evt) {
             const el = document.getElementById('node-' + k);
             if (el && el.querySelector('.drawflow_content_node') && cfg && cfg.data) {
               el.querySelector('.drawflow_content_node').innerHTML = buildNodeHTML(
-                cfg.data.type,
-                cfg.data.label,
-                cfg.data.outputLabels,
-                cfg.data.notesValue,
-                cfg.data.config,
-                cfg.data.endActions
-              );
-            }
-          }, 100);
+              cfg.data.type,
+              cfg.data.label,
+              cfg.data.outputLabels,
+              cfg.data.notesValue,
+              cfg.data.config,
+              cfg.data.endActions
+    );
+
+    // Auto-resize the notes textarea based on its loaded content
+    const ta = el.querySelector('.node-notes-field');
+    if (ta && window.autosizeNotes) {
+      window.autosizeNotes(ta);
+    }
+  }
+}, 100);
         }
       }, 100);
       console.log('Ready to import object:', obj);
