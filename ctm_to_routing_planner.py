@@ -7,6 +7,7 @@ a Drawflow JSON file loadable in the CTM Routing Planner visual designer.
 
 Usage:
     python3 ctm_to_routing_planner.py [--account-id ID] [--output FILE]
+      [--calls-enrich-limit N]
 
 The script fetches:
   • Tracking numbers (and their route_to destinations)
@@ -267,6 +268,46 @@ def safe_get(client: CTMClient, path: str, label: str = "") -> Dict:
         return {}
 
 
+def fetch_recent_calls_cursor(
+    client: CTMClient,
+    account_id: str,
+    limit: int = 500,
+    per_page: int = 100,
+) -> List[Dict]:
+    """Fetch recent calls using next_page cursor pagination."""
+    if limit <= 0:
+        return []
+    calls: List[Dict] = []
+    seen: set = set()
+    path: str = f"/accounts/{account_id}/calls"
+    params: Optional[Dict[str, Any]] = {"per_page": per_page, "format": "json"}
+
+    while len(calls) < limit:
+        resp = client.get(path, params=params)
+        batch = resp.get("calls", []) if isinstance(resp, dict) else []
+        if not isinstance(batch, list) or not batch:
+            break
+
+        for c in batch:
+            if not isinstance(c, dict):
+                continue
+            cid = c.get("id") or c.get("sid")
+            if cid in seen:
+                continue
+            seen.add(cid)
+            calls.append(c)
+            if len(calls) >= limit:
+                break
+
+        next_page = resp.get("next_page") if isinstance(resp, dict) else None
+        if not next_page:
+            break
+        path = next_page
+        params = None
+
+    return calls[:limit]
+
+
 # ── Graph building ─────────────────────────────────────────────────────────
 # CTM route_to type → Routing Planner node type
 CTM_TYPE_MAP = {
@@ -282,8 +323,53 @@ CTM_TYPE_MAP = {
     "PhysicalPhoneNumber": "ReceivingNumber",
 }
 
+# call_path route_type normalisation (camel/pascal/snake/mixed)
+CALL_PATH_TYPE_MAP = {
+    "trackingnumber": "TrackingNumber",
+    "callqueue": "Queue",
+    "voicemenu": "IVR",
+    "voicebot": "VoiceBot",
+    "user": "ReceivingNumber",
+    "receivingnumber": "ReceivingNumber",
+    "physicalphonenumber": "ReceivingNumber",
+    "voicemail": "Voicemail",
+    "routingrule": "SmartRouter",
+    "conditionalrouter": "SmartRouter",
+    "smartrouter": "SmartRouter",
+}
 
-def build_graph(client: CTMClient, account_id: str) -> RoutingGraph:
+
+def normalize_route_node_type(raw_type: str) -> str:
+    if not raw_type:
+        return ""
+    if raw_type in CTM_TYPE_MAP:
+        return CTM_TYPE_MAP[raw_type]
+    compact = "".join(ch for ch in str(raw_type) if ch.isalnum()).lower()
+    if compact in CALL_PATH_TYPE_MAP:
+        return CALL_PATH_TYPE_MAP[compact]
+    return str(raw_type)
+
+
+def parse_call_path_step(step: Dict[str, Any]) -> Optional[Tuple[str, str, str]]:
+    if not isinstance(step, dict):
+        return None
+    raw_type = str(step.get("route_type") or step.get("type") or "").strip()
+    rid = str(step.get("route_id") or step.get("id") or "").strip()
+    if not raw_type or not rid:
+        return None
+    ntype = normalize_route_node_type(raw_type)
+    if not ntype:
+        return None
+    name = str(step.get("route_name") or step.get("name") or raw_type)
+    return (ntype, rid, name)
+
+
+def build_graph(
+    client: CTMClient,
+    account_id: str,
+    calls_enrich_limit: int = 500,
+    calls_enrich_per_page: int = 100,
+) -> RoutingGraph:
     g = RoutingGraph()
 
     # ── 1. Fetch all resource lists ──────────────────────────────────────
@@ -623,7 +709,7 @@ def build_graph(client: CTMClient, account_id: str) -> RoutingGraph:
         if rtype_ctm in ("", "none", "unknown"):
             return
 
-        ntype = CTM_TYPE_MAP.get(rtype_ctm, rtype_ctm)
+        ntype = normalize_route_node_type(rtype_ctm)
 
         # Extract ID and name from dial (can be list or dict)
         dial = route_to.get("dial")
@@ -692,6 +778,55 @@ def build_graph(client: CTMClient, account_id: str) -> RoutingGraph:
 
         if route_to:
             _follow_route_to(key, route_to, 0)
+
+    # ── 5. Optional enrichment from runtime call_path chains ─────────────
+    if calls_enrich_limit > 0:
+        print(f"Enriching graph from recent call_path data (limit={calls_enrich_limit})...")
+        try:
+            calls = fetch_recent_calls_cursor(
+                client,
+                account_id=account_id,
+                limit=calls_enrich_limit,
+                per_page=calls_enrich_per_page,
+            )
+        except Exception as ex:
+            print(f"  [warn] call_path enrichment skipped: {ex}")
+            calls = []
+
+        def add_edge_auto(from_key: str, to_key: str):
+            if from_key == to_key:
+                return
+            # Do not duplicate an existing destination edge from this node.
+            if any(fk == from_key and tk == to_key for fk, _, tk in g.edges):
+                return
+            used = [oi for fk, oi, _ in g.edges if fk == from_key]
+            next_idx = (max(used) + 1) if used else 0
+            g.add_edge(from_key, next_idx, to_key)
+
+        added_edges = 0
+        for call in calls:
+            cp = call.get("call_path") or []
+            if not isinstance(cp, list) or len(cp) < 2:
+                continue
+
+            chain_keys: List[str] = []
+            for step in cp:
+                parsed = parse_call_path_step(step)
+                if not parsed:
+                    continue
+                ntype, rid, label = parsed
+                chain_keys.append(add_routing_node(ntype, rid, label))
+
+            if len(chain_keys) < 2:
+                continue
+
+            for i in range(len(chain_keys) - 1):
+                before = len(g.edges)
+                add_edge_auto(chain_keys[i], chain_keys[i + 1])
+                if len(g.edges) > before:
+                    added_edges += 1
+
+        print(f"  call_path enrichment: {len(calls)} calls scanned, {added_edges} edges added")
 
     return g
 
@@ -842,6 +977,18 @@ def main():
         default=None,
         help="Output file path (default: ctm_routing_<account>_<timestamp>.json)",
     )
+    parser.add_argument(
+        "--calls-enrich-limit",
+        type=int,
+        default=500,
+        help="Use recent calls call_path to enrich deep route edges (0 disables, default: 500)",
+    )
+    parser.add_argument(
+        "--calls-enrich-per-page",
+        type=int,
+        default=100,
+        help="Per-page size for call_path enrichment fetch (default: 100)",
+    )
     args = parser.parse_args()
 
     account_id = args.account_id
@@ -851,7 +998,12 @@ def main():
     print(f"  CTM → Routing Planner  |  Account: {account_id}")
     print(f"{'='*60}\n")
 
-    graph = build_graph(client, account_id)
+    graph = build_graph(
+        client,
+        account_id,
+        calls_enrich_limit=max(0, int(args.calls_enrich_limit)),
+        calls_enrich_per_page=max(1, int(args.calls_enrich_per_page)),
+    )
 
     print(f"\nAssigning layout positions...")
     assign_positions(graph)
