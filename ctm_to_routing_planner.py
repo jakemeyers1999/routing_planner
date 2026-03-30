@@ -215,8 +215,8 @@ def build_node_html(
         f' onclick="event.stopPropagation();window.editLabel(this)">{_esc(label)}</span>'
         f"{summary_html}"
         f"{slots_html}\n"
-        f'    <textarea class="node-notes-field" placeholder="Notes / scope details..." rows="2"\n'
-        f"      oninput=\"window.saveNodeNotes(this)\">{_esc(notes_value)}</textarea>\n"
+        f'    <textarea class="node-notes-field" placeholder="Notes / scope details..." rows="2" title="Double-click border/corner to reset height"\n'
+        f"      oninput=\"window.autosizeNotes(this);window.saveNodeNotes(this)\" ondblclick=\"window.maybeResetNotesSize(this,event)\">{_esc(notes_value)}</textarea>\n"
         f"  </div>\n"
         f'  <div class="node-footer">\n'
         f"    <button class=\"node-footer-btn\""

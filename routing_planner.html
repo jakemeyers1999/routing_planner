@@ -89,7 +89,7 @@
     .output-slot-row:hover .remove-path-btn { display:inline-block; }
 
     /* Notes textarea */
-    .node-notes-field { width:100%; min-height:32px; max-height:70px; font-size:.78rem; border-radius:4px; background:#0d1b30; color:#6888a0; padding:3px 6px; border:1px dashed #0E5E8C55; resize:vertical; outline:none; font-family:inherit; line-height:1.2; margin-top:3px; display:block; }
+    .node-notes-field { width:100%; min-height:32px; max-height:none; font-size:.78rem; border-radius:4px; background:#0d1b30; color:#6888a0; padding:3px 6px; border:1px dashed #0E5E8C55; resize:vertical; overflow-y:hidden; outline:none; font-family:inherit; line-height:1.2; margin-top:3px; display:block; }
     .node-notes-field:focus { border-color:#0796CA; color:#a8c8e0; }
 
     /* Node footer action buttons */
@@ -776,8 +776,8 @@ function buildNodeHTML(type, label, outputLabels, notesValue, configData, endAct
     <span class="drawflow-node-label" onclick="event.stopPropagation();window.editLabel(this)">${label}</span>
     ${summaryHTML}
     ${outputInputsHTML}
-    <textarea class="node-notes-field" placeholder="Notes / scope details..." rows="2"
-      oninput="window.saveNodeNotes(this)">${notes}</textarea>
+    <textarea class="node-notes-field" placeholder="Notes / scope details..." rows="2" title="Double-click border/corner to reset height"
+      oninput="window.autosizeNotes(this);window.saveNodeNotes(this)" ondblclick="window.maybeResetNotesSize(this,event)">${notes}</textarea>
   </div>
   <div class="node-footer">
     ${configureBtn}
@@ -822,7 +822,11 @@ function addNodeWithDepth(type, parentId, fromOutputIdx) {
 
   setTimeout(()=>{
     const el = document.getElementById('node-'+newId);
-    if (el) el.setAttribute('data-node', type);
+    if (el) {
+      el.setAttribute('data-node', type);
+      const ta = el.querySelector('.node-notes-field');
+      if (ta && window.autosizeNotes) window.autosizeNotes(ta);
+    }
   }, 10);
 
   if (parentId !== null && fromOutputIdx) {
@@ -841,6 +845,66 @@ window.saveNodeNotes = function(ta) {
     n.data.notesValue = ta.value;
     editor.updateNodeDataFromId(id, n.data);
   } catch {}
+};
+
+// Automatically resize notes textarea from 2 to 4 visible lines, then scroll.
+window.autosizeNotes = function(ta) {
+  if (!ta) return;
+
+  const prevAutoHeight = parseFloat(ta.dataset.autoHeight || '0');
+  const currentHeight = ta.offsetHeight;
+  const wasManuallyExpanded = prevAutoHeight > 0 && currentHeight > (prevAutoHeight + 1);
+
+  ta.style.height = 'auto';
+  const cs = window.getComputedStyle(ta);
+  const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.2) || 16;
+  const minLines = 2;
+  const maxLines = 4;
+
+  const border = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+  const padding = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const minHeight = lineHeight * minLines + padding + border;
+  const maxHeight = lineHeight * maxLines + padding + border;
+  const contentHeight = Math.max(ta.scrollHeight, minHeight);
+  const autoHeight = Math.min(contentHeight, maxHeight);
+  const newHeight = wasManuallyExpanded ? Math.max(autoHeight, currentHeight) : autoHeight;
+
+  ta.style.height = newHeight + 'px';
+  ta.style.overflowY = ta.scrollHeight > newHeight ? 'auto' : 'hidden';
+  ta.dataset.autoHeight = String(autoHeight);
+};
+
+window.resetNotesSize = function(ta) {
+  if (!ta) return;
+  ta.style.height = 'auto';
+  ta.dataset.autoHeight = '0';
+  if (window.autosizeNotes) window.autosizeNotes(ta);
+};
+
+window.maybeResetNotesSize = function(ta, ev) {
+  if (!ta || !ev) return;
+
+  const cs = window.getComputedStyle(ta);
+  const borderL = parseFloat(cs.borderLeftWidth) || 0;
+  const borderR = parseFloat(cs.borderRightWidth) || 0;
+  const borderT = parseFloat(cs.borderTopWidth) || 0;
+  const borderB = parseFloat(cs.borderBottomWidth) || 0;
+
+  // Allow a forgiving hit zone around borders/corners.
+  const edgePad = 6;
+  const x = ev.offsetX;
+  const y = ev.offsetY;
+  const w = ta.clientWidth;
+  const h = ta.clientHeight;
+
+  const onLeftEdge = x <= borderL + edgePad;
+  const onRightEdge = x >= (w - borderR - edgePad);
+  const onTopEdge = y <= borderT + edgePad;
+  const onBottomEdge = y >= (h - borderB - edgePad);
+  const nearEdge = onLeftEdge || onRightEdge || onTopEdge || onBottomEdge;
+
+  if (!nearEdge) return;
+  window.resetNotesSize(ta);
 };
 
 window.updateOutputLabel = function(inp, idx, value) {
@@ -1138,7 +1202,10 @@ window.saveNodeConfig = function() {
     // Update notes textarea
     if (notesText) {
       const ta = nodeEl.querySelector('.node-notes-field');
-      if (ta) ta.value = notesText;
+      if (ta) {
+        ta.value = notesText;
+        if (window.autosizeNotes) window.autosizeNotes(ta);
+      }
     }
     // Mark configure button as configured
     const cfgBtn = nodeEl.querySelector('.node-footer-btn:not(.end-actions-btn):not(.copy-btn)');
@@ -1543,6 +1610,8 @@ editor.on('import', function() {
             n.data.config,
             n.data.endActions
           );
+          const ta = content.querySelector('.node-notes-field');
+          if (ta && window.autosizeNotes) window.autosizeNotes(ta);
         }
       }
     });
@@ -2375,7 +2444,8 @@ function handleFile(evt) {
           setTimeout(() => {
             const el = document.getElementById('node-' + k);
             if (el && el.querySelector('.drawflow_content_node') && cfg && cfg.data) {
-              el.querySelector('.drawflow_content_node').innerHTML = buildNodeHTML(
+              const content = el.querySelector('.drawflow_content_node');
+              content.innerHTML = buildNodeHTML(
                 cfg.data.type,
                 cfg.data.label,
                 cfg.data.outputLabels,
@@ -2383,6 +2453,8 @@ function handleFile(evt) {
                 cfg.data.config,
                 cfg.data.endActions
               );
+              const ta = content.querySelector('.node-notes-field');
+              if (ta && window.autosizeNotes) window.autosizeNotes(ta);
             }
           }, 100);
         }
