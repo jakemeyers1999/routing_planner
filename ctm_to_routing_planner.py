@@ -7,7 +7,7 @@ a Drawflow JSON file loadable in the CTM Routing Planner visual designer.
 
 Usage:
     python3 ctm_to_routing_planner.py [--account-id ID] [--output FILE]
-      [--calls-enrich-limit N]
+      [--enrich-mode active|calls] [--calls-enrich-limit N]
 
 The script fetches:
   • Tracking numbers (and their route_to destinations)
@@ -91,6 +91,7 @@ BADGE_MAP = {
     "Voicemail": "Voicemail",
     "NoAnswer": "No Answer Branch",
     "EndAction": "End Action",
+    "Trigger": "Trigger",
 }
 
 # Node types that render output-label slot lists
@@ -315,9 +316,11 @@ CTM_TYPE_MAP = {
     "voice_bot": "VoiceBot",
     "call_queue": "Queue",
     "voice_menu": "IVR",
+    "conditional_router": "SmartRouter",
     "VoiceMenu": "IVR",
     "CallQueue": "Queue",
     "ConditionalRouter": "SmartRouter",
+    "SmartRouter": "SmartRouter",
     "VoiceMail": "Voicemail",
     "voicemail": "Voicemail",
     "PhysicalPhoneNumber": "ReceivingNumber",
@@ -326,16 +329,42 @@ CTM_TYPE_MAP = {
 # call_path route_type normalisation (camel/pascal/snake/mixed)
 CALL_PATH_TYPE_MAP = {
     "trackingnumber": "TrackingNumber",
+    "number": "TrackingNumber",
+    "virtualphonenumber": "TrackingNumber",
     "callqueue": "Queue",
+    "queue": "Queue",
     "voicemenu": "IVR",
+    "ivr": "IVR",
     "voicebot": "VoiceBot",
     "user": "ReceivingNumber",
+    "agent": "ReceivingNumber",
     "receivingnumber": "ReceivingNumber",
     "physicalphonenumber": "ReceivingNumber",
+    "phonenumber": "ReceivingNumber",
     "voicemail": "Voicemail",
     "routingrule": "SmartRouter",
+    "conditionalrouterid": "SmartRouter",
+    "conditionalrouting": "SmartRouter",
     "conditionalrouter": "SmartRouter",
     "smartrouter": "SmartRouter",
+    "trigger": "Trigger",
+    "triggers": "Trigger",
+    "automator": "Trigger",
+    "automation": "Trigger",
+    "workflowtrigger": "Trigger",
+}
+
+# Only these node types are considered true routing objects for call_path enrichment.
+# Non-routing runtime events (recording start, score/contact panel updates, etc.)
+# are intentionally excluded so they do not clutter the flow graph.
+ENRICH_ROUTING_TYPES = {
+    "TrackingNumber",
+    "Queue",
+    "IVR",
+    "VoiceBot",
+    "SmartRouter",
+    "ReceivingNumber",
+    "Voicemail",
 }
 
 
@@ -347,20 +376,62 @@ def normalize_route_node_type(raw_type: str) -> str:
     compact = "".join(ch for ch in str(raw_type) if ch.isalnum()).lower()
     if compact in CALL_PATH_TYPE_MAP:
         return CALL_PATH_TYPE_MAP[compact]
+    # Heuristic fallback for variant route_type values
+    if "queue" in compact:
+        return "Queue"
+    if "voicemail" in compact:
+        return "Voicemail"
+    if "voicebot" in compact or ("bot" in compact and "voice" in compact):
+        return "VoiceBot"
+    if "voicemenu" in compact or "ivr" in compact:
+        return "IVR"
+    if "router" in compact or "routingrule" in compact:
+        return "SmartRouter"
+    if "trackingnumber" in compact or "virtualphonenumber" in compact or compact == "number":
+        return "TrackingNumber"
+    if "receivingnumber" in compact or "physicalphonenumber" in compact:
+        return "ReceivingNumber"
+    if "trigger" in compact or "automator" in compact or "automation" in compact:
+        return "Trigger"
     return str(raw_type)
 
 
-def parse_call_path_step(step: Dict[str, Any]) -> Optional[Tuple[str, str, str]]:
+def parse_call_path_step(
+    step: Dict[str, Any], include_call_triggers: bool = False
+) -> Optional[Tuple[str, str, str]]:
     if not isinstance(step, dict):
         return None
-    raw_type = str(step.get("route_type") or step.get("type") or "").strip()
-    rid = str(step.get("route_id") or step.get("id") or "").strip()
-    if not raw_type or not rid:
+    raw_type = str(
+        step.get("route_type")
+        or step.get("type")
+        or step.get("object_type")
+        or step.get("destination_type")
+        or ""
+    ).strip()
+    rid = str(
+        step.get("route_id")
+        or step.get("id")
+        or step.get("object_id")
+        or step.get("destination_id")
+        or step.get("node_id")
+        or ""
+    ).strip()
+    if not raw_type:
         return None
     ntype = normalize_route_node_type(raw_type)
     if not ntype:
         return None
-    name = str(step.get("route_name") or step.get("name") or raw_type)
+    if ntype == "Trigger" and not include_call_triggers:
+        return None
+    if ntype not in ENRICH_ROUTING_TYPES and ntype != "Trigger":
+        return None
+    name = str(
+        step.get("route_name")
+        or step.get("name")
+        or step.get("object_name")
+        or step.get("destination_name")
+        or raw_type
+    )
     return (ntype, rid, name)
 
 
@@ -369,6 +440,8 @@ def build_graph(
     account_id: str,
     calls_enrich_limit: int = 500,
     calls_enrich_per_page: int = 100,
+    include_call_triggers: bool = False,
+    enrich_mode: str = "active",
 ) -> RoutingGraph:
     g = RoutingGraph()
 
@@ -409,6 +482,16 @@ def build_graph(
     )
     print(f"  {len(receiving)} receiving numbers")
 
+    print("Fetching voicemails...")
+    try:
+        voicemails = client.paginate_keyed(
+            f"/accounts/{account_id}/voicemails", key="voicemails", per_page=200
+        )
+    except Exception as ex:
+        print(f"  [warn] voicemails fetch failed: {ex}")
+        voicemails = []
+    print(f"  {len(voicemails)} voicemails")
+
     # ── 2. Build lookup maps ─────────────────────────────────────────────
     vb_by_id = {str(b.get("botid") or b.get("id") or ""): b for b in voice_bots}
     vb_by_full_id = {}
@@ -422,6 +505,88 @@ def build_graph(
     queue_by_id = {str(q.get("id") or ""): q for q in queues}
     router_by_id = {str(r.get("id") or ""): r for r in routers}
     rn_by_id = {str(r.get("id") or ""): r for r in receiving}
+    vmail_by_id = {str(v.get("id") or ""): v for v in voicemails}
+
+    known_ids_by_type = {
+        "TrackingNumber": {str(n.get("id") or "") for n in numbers if str(n.get("id") or "")},
+        "Queue": set(queue_by_id.keys()),
+        "IVR": set(vm_by_id.keys()),
+        "SmartRouter": set(router_by_id.keys()),
+        "ReceivingNumber": set(rn_by_id.keys()),
+        "Voicemail": set(vmail_by_id.keys()),
+    }
+    known_voicebot_ids = set(vb_by_id.keys()) | set(vb_by_full_id.keys())
+
+    def _norm_name(v: Any) -> str:
+        return " ".join(str(v or "").strip().lower().split())
+
+    known_name_to_ids_by_type: Dict[str, Dict[str, set]] = {
+        "TrackingNumber": {},
+        "Queue": {},
+        "IVR": {},
+        "SmartRouter": {},
+        "ReceivingNumber": {},
+        "Voicemail": {},
+        "VoiceBot": {},
+    }
+
+    def _add_name_idx(ntype: str, name: Any, rid: Any):
+        n = _norm_name(name)
+        r = str(rid or "").strip()
+        if not n or not r:
+            return
+        m = known_name_to_ids_by_type.setdefault(ntype, {})
+        m.setdefault(n, set()).add(r)
+
+    for n in numbers:
+        rid = str(n.get("id") or "").strip()
+        _add_name_idx("TrackingNumber", n.get("name"), rid)
+        _add_name_idx("TrackingNumber", n.get("number"), rid)
+        _add_name_idx("TrackingNumber", n.get("formatted"), rid)
+    for rid, q in queue_by_id.items():
+        _add_name_idx("Queue", q.get("name"), rid)
+    for rid, vm in vm_by_id.items():
+        _add_name_idx("IVR", vm.get("name"), rid)
+    for rid, r in router_by_id.items():
+        _add_name_idx("SmartRouter", r.get("name"), rid)
+    for rid, rn in rn_by_id.items():
+        _add_name_idx("ReceivingNumber", rn.get("name"), rid)
+        _add_name_idx("ReceivingNumber", rn.get("label"), rid)
+        _add_name_idx("ReceivingNumber", rn.get("number"), rid)
+        _add_name_idx("ReceivingNumber", rn.get("formatted"), rid)
+        _add_name_idx("ReceivingNumber", rn.get("display_number"), rid)
+    for rid, vm in vmail_by_id.items():
+        _add_name_idx("Voicemail", vm.get("name"), rid)
+        _add_name_idx("Voicemail", vm.get("label"), rid)
+    for rid, vb in vb_by_full_id.items():
+        _add_name_idx("VoiceBot", vb.get("name"), rid)
+
+    def is_known_routing_ref(ntype: str, rid: str) -> bool:
+        """Ensure enrichment only links to routing objects that exist in account data."""
+        if not rid:
+            return False
+        if ntype == "VoiceBot":
+            return rid in known_voicebot_ids
+        if ntype == "Trigger":
+            # Trigger steps are optional and may not have a locally-fetched catalog.
+            return True
+        return rid in known_ids_by_type.get(ntype, set())
+
+    def resolve_enrich_ref(ntype: str, rid: str, label: str) -> Optional[str]:
+        """
+        Resolve call_path reference to a known routing object.
+        Prefer ID match; if missing/unmatched, fall back to unique name match.
+        """
+        rid = str(rid or "").strip()
+        if rid and is_known_routing_ref(ntype, rid):
+            return rid
+        nm = _norm_name(label)
+        if not nm:
+            return None
+        ids = list(known_name_to_ids_by_type.get(ntype, {}).get(nm, set()))
+        if len(ids) == 1:
+            return ids[0]
+        return None
 
     # Detail caches (lazy fetch)
     _vb_detail: Dict[str, Dict] = {}
@@ -578,12 +743,29 @@ def build_graph(
             total_agents = detail.get("total_agents") or queue_by_id.get(rid, {}).get("total_agents") or ""
             wait_music = detail.get("wait_music") or ""
             schedule = detail.get("schedule")
+            action_targets = _extract_action_route_targets(
+                detail,
+                prefixes=[
+                    "default",
+                    "no_answer",
+                    "after_hours",
+                    "closed",
+                    "overflow",
+                    "timeout",
+                    "failover",
+                ],
+            )
+            # Deduplicate by destination while preserving order.
+            seen_action = set()
+            action_targets_unique: List[Tuple[str, str, str]] = []
+            for lbl, a_type, a_id in action_targets:
+                sig = (a_type, a_id)
+                if sig in seen_action:
+                    continue
+                seen_action.add(sig)
+                action_targets_unique.append((lbl, a_type, a_id))
 
-            default_action_type = detail.get("default_action_type") or ""
-            default_action_id = str(detail.get("default_action_id") or "")
-            default_action_label = detail.get("default_action_label") or ""
-
-            output_labels = [""]  # primary path out
+            output_labels = [lbl for (lbl, _, _) in action_targets_unique] or [""]
             g.add_node(
                 ntype,
                 rid,
@@ -600,17 +782,26 @@ def build_graph(
                     f"Queue: {name}\n"
                     f"Ring Strategy: {routing}\n"
                     f"Agents: {total_agents}\n"
-                    + (f"Default Action: {default_action_label} ({default_action_type})\n" if default_action_label else "")
+                    + (
+                        "Action Routes:\n"
+                        + "\n".join(
+                            f" - {lbl}: {a_type} ({a_id})"
+                            for (lbl, a_type, a_id) in action_targets_unique
+                        )
+                        + "\n"
+                        if action_targets_unique
+                        else ""
+                    )
                     + (f"Schedule: {schedule}\n" if schedule else "")
                 ),
             )
 
-            # Follow default/overflow action
-            if default_action_type and default_action_id:
-                child_ntype = CTM_TYPE_MAP.get(default_action_type, default_action_type)
+            # Follow queue action routes (default/no-answer/after-hours/etc.)
+            for out_idx, (lbl, a_type, a_id) in enumerate(action_targets_unique):
+                child_ntype = CTM_TYPE_MAP.get(a_type, normalize_route_node_type(a_type))
                 if child_ntype in CTM_TYPE_MAP.values() or child_ntype in BADGE_MAP:
-                    child_key = add_routing_node(child_ntype, default_action_id, default_action_label)
-                    g.add_edge(key, 0, child_key)
+                    child_key = add_routing_node(child_ntype, a_id, lbl)
+                    g.add_edge(key, out_idx, child_key)
 
         elif ntype == "SmartRouter":
             detail = get_router_detail(rid)
@@ -686,6 +877,17 @@ def build_graph(
                 config={},
                 notes=f"Voicemail ID: {rid}",
             )
+        elif ntype == "Trigger":
+            trig_label = fallback_name or f"Trigger {rid[:12]}"
+            g.add_node(
+                ntype,
+                rid,
+                ntype=ntype,
+                label=trig_label,
+                output_labels=[""],
+                config={},
+                notes=f"Call Trigger ID: {rid}",
+            )
 
         else:
             # Unknown / unmapped type — render as a generic node
@@ -746,6 +948,25 @@ def build_graph(
             child_key = add_routing_node(ntype, rid, name)
             g.add_edge(from_key, output_idx, child_key)
 
+    def _extract_action_route_targets(detail: Dict, prefixes: List[str]) -> List[Tuple[str, str, str]]:
+        """
+        Extract (label, action_type, action_id) triples from CTM objects that
+        store downstream destinations as *_action_type / *_action_id fields.
+        """
+        out: List[Tuple[str, str, str]] = []
+        for pref in prefixes:
+            a_type = str(detail.get(f"{pref}_action_type") or "").strip()
+            a_id = str(detail.get(f"{pref}_action_id") or "").strip()
+            if not a_type or not a_id:
+                continue
+            a_label = (
+                detail.get(f"{pref}_action_label")
+                or detail.get(f"{pref}_label")
+                or pref.replace("_", " ").title()
+            )
+            out.append((str(a_label), a_type, a_id))
+        return out
+
     # ── 4. Seed with tracking numbers ───────────────────────────────────
     print("\nBuilding routing graph...")
     for num in numbers:
@@ -780,7 +1001,7 @@ def build_graph(
             _follow_route_to(key, route_to, 0)
 
     # ── 5. Optional enrichment from runtime call_path chains ─────────────
-    if calls_enrich_limit > 0:
+    if enrich_mode == "calls" and calls_enrich_limit > 0:
         print(f"Enriching graph from recent call_path data (limit={calls_enrich_limit})...")
         try:
             calls = fetch_recent_calls_cursor(
@@ -804,6 +1025,9 @@ def build_graph(
             g.add_edge(from_key, next_idx, to_key)
 
         added_edges = 0
+        skipped_steps = 0
+        skipped_unknown_refs = 0
+        skipped_unknown_samples: List[str] = []
         for call in calls:
             cp = call.get("call_path") or []
             if not isinstance(cp, list) or len(cp) < 2:
@@ -811,11 +1035,22 @@ def build_graph(
 
             chain_keys: List[str] = []
             for step in cp:
-                parsed = parse_call_path_step(step)
+                parsed = parse_call_path_step(
+                    step, include_call_triggers=include_call_triggers
+                )
                 if not parsed:
+                    skipped_steps += 1
                     continue
                 ntype, rid, label = parsed
-                chain_keys.append(add_routing_node(ntype, rid, label))
+                resolved_rid = resolve_enrich_ref(ntype, rid, label)
+                if not resolved_rid:
+                    skipped_unknown_refs += 1
+                    if len(skipped_unknown_samples) < 12:
+                        skipped_unknown_samples.append(
+                            f"{ntype} | id={rid or '-'} | label={label or '-'}"
+                        )
+                    continue
+                chain_keys.append(add_routing_node(ntype, resolved_rid, label))
 
             if len(chain_keys) < 2:
                 continue
@@ -826,7 +1061,22 @@ def build_graph(
                 if len(g.edges) > before:
                     added_edges += 1
 
-        print(f"  call_path enrichment: {len(calls)} calls scanned, {added_edges} edges added")
+        print(
+            "  call_path enrichment: "
+            f"{len(calls)} calls scanned, "
+            f"{added_edges} edges added, "
+            f"{skipped_steps} non-routing/filtered/invalid steps skipped, "
+            f"{skipped_unknown_refs} unknown-object refs skipped, "
+            f"include_call_triggers={include_call_triggers}"
+        )
+        if skipped_unknown_samples:
+            print("  sample unresolved call_path refs:")
+            for s in skipped_unknown_samples:
+                print(f"    - {s}")
+    elif enrich_mode == "calls":
+        print("call_path enrichment disabled (calls_enrich_limit <= 0)")
+    else:
+        print("Using active-routing config traversal only (call_path enrichment disabled)")
 
     return g
 
@@ -989,6 +1239,20 @@ def main():
         default=100,
         help="Per-page size for call_path enrichment fetch (default: 100)",
     )
+    parser.add_argument(
+        "--include-call-triggers",
+        action="store_true",
+        help="Include trigger/automator steps found in call_path enrichment (default: off)",
+    )
+    parser.add_argument(
+        "--enrich-mode",
+        choices=["active", "calls"],
+        default="active",
+        help=(
+            "active: build only from current routing object JSON traversal (default). "
+            "calls: additionally enrich from recent call_path chains."
+        ),
+    )
     args = parser.parse_args()
 
     account_id = args.account_id
@@ -1003,6 +1267,8 @@ def main():
         account_id,
         calls_enrich_limit=max(0, int(args.calls_enrich_limit)),
         calls_enrich_per_page=max(1, int(args.calls_enrich_per_page)),
+        include_call_triggers=bool(args.include_call_triggers),
+        enrich_mode=str(args.enrich_mode or "active"),
     )
 
     print(f"\nAssigning layout positions...")
