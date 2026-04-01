@@ -32,9 +32,41 @@
     .toolbar-hint { font-size:11px; color:#5a8aaa; margin-left:auto; }
 
     /* ── Canvas ── */
-    #drawflow-wrap { flex:1; overflow:hidden; padding:8px; }
+    #drawflow-wrap { flex:1; overflow:hidden; padding:8px; position:relative; }
     #drawflow { background:#16294F; height:100%; width:100%; border-radius:12px; box-shadow:0 6px 24px #00000055; position:relative; overflow:hidden; }
     .drawflow { min-width:4000px; min-height:2400px; }
+    #toolbar .btn-minimap-active { background:#D6DA01; color:#16294F; border:1px solid #D6DA01; }
+    #toolbar .btn-minimap-active:hover { background:#eaee20; color:#16294F; border-color:#eaee20; }
+    .minimap-panel {
+      position:absolute; right:18px; bottom:18px; z-index:30;
+      width:250px; padding:8px; border-radius:10px;
+      background:#071525ee; border:1px solid #0796CA99; box-shadow:0 8px 20px #00000066;
+      backdrop-filter: blur(2px);
+    }
+    .minimap-hidden { display:none; }
+    .minimap-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:.74rem; color:#7ab8d8; }
+    #minimapCanvas {
+      width:100%; height:150px; display:block; border-radius:7px;
+      background:#0d1b30; border:1px solid #0E5E8C88; cursor:crosshair;
+    }
+    #pathHoverHint {
+      position: fixed;
+      z-index: 1200;
+      pointer-events: none;
+      display: none;
+      max-width: 360px;
+      padding: 6px 9px;
+      border-radius: 6px;
+      background: #071525f2;
+      border: 1px solid #0796CAaa;
+      color: #d3ecff;
+      font-size: 11px;
+      line-height: 1.35;
+      box-shadow: 0 6px 16px #00000066;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
 
     /* ── Node type colors — all grounded in the brand palette ── */
     .drawflow-node { border-radius:8px; min-width:210px; max-width:250px; padding:0!important; }
@@ -283,13 +315,21 @@ textarea.node-notes-field:focus {
     <button onclick="saveFlow()">💾 Save</button>
     <button onclick="loadFlow()">📂 Load</button>
     <button class="btn-arrange" onclick="autoArrange()">⚡ Auto Arrange</button>
+    <button class="btn-arrange" id="toggleMinimapBtn" onclick="toggleMinimap()">🗺 Minimap</button>
     <button class="btn-generate" onclick="generatePythonScript()">🐍 Generate Script</button>
     <button class="btn-import" onclick="openCTMImport()">📥 Import from CTM</button>
     <input type="file" id="fileInput" style="display:none;" accept="application/json" onchange="handleFile(event)">
-    <span class="toolbar-hint">Click an output port to branch · Double-click label to rename</span>
+    <span class="toolbar-hint">Click an output port to branch · Double-click label to rename · Cmd/Ctrl+Click path to jump</span>
   </div>
   <div id="drawflow-wrap">
     <div id="drawflow"></div>
+    <div id="minimapPanel" class="minimap-panel minimap-hidden" aria-hidden="true">
+      <div class="minimap-header">
+        <span>Flow Minimap</span>
+        <span id="minimapZoomLabel">100%</span>
+      </div>
+      <canvas id="minimapCanvas" width="240" height="150"></canvas>
+    </div>
   </div>
 
   <!-- Node context menu -->
@@ -301,6 +341,7 @@ textarea.node-notes-field:focus {
       <button class="cancel-btn" id="nodeMenuCancelBtn">Cancel</button>
     </div>
   </div>
+  <div id="pathHoverHint" aria-hidden="true"></div>
 
   <!-- End Actions Panel -->
   <div id="endActionsPanel" class="modal-box" style="display:none;">
@@ -697,6 +738,170 @@ function getConfigSummary(type, config) {
 const editor = new Drawflow(document.getElementById('drawflow'));
 editor.reroute = true;
 editor.start();
+
+// ─────────────────────────────────────────────
+// Minimap
+// ─────────────────────────────────────────────
+const minimapState = {
+  enabled: false,
+  raf: 0,
+  drag: false,
+  map: null
+};
+const minimapPanel = document.getElementById('minimapPanel');
+const minimapCanvas = document.getElementById('minimapCanvas');
+const minimapZoomLabel = document.getElementById('minimapZoomLabel');
+const toggleMinimapBtn = document.getElementById('toggleMinimapBtn');
+
+const NODE_MINIMAP_COLORS = {
+  TrackingNumber: '#01BDF6',
+  TrackingSource: '#01BDF6',
+  IVR: '#0796CA',
+  Queue: '#0E5E8C',
+  SmartRouter: '#D6DA01',
+  VoiceBot: '#D6DA01',
+  ReceivingNumber: '#4fd2ff',
+  Voicemail: '#5ea4cb',
+  NoAnswer: '#6b7c8f',
+  EndAction: '#c8cc33'
+};
+
+function getFlowDataMap() {
+  return (editor.drawflow && editor.drawflow.drawflow && editor.drawflow.drawflow.Home && editor.drawflow.drawflow.Home.data) || {};
+}
+function computeMinimapBounds() {
+  const data = getFlowDataMap();
+  const nodes = Object.values(data);
+  const minCanvasW = editor.precanvas ? editor.precanvas.clientWidth : 4000;
+  const minCanvasH = editor.precanvas ? editor.precanvas.clientHeight : 2400;
+  if (!nodes.length) {
+    return { minX:0, minY:0, maxX:minCanvasW, maxY:minCanvasH, width:minCanvasW, height:minCanvasH, nodes };
+  }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  nodes.forEach(n => {
+    const el = document.getElementById('node-' + n.id);
+    const w = (el && el.offsetWidth) ? el.offsetWidth : 240;
+    const h = (el && el.offsetHeight) ? el.offsetHeight : 130;
+    minX = Math.min(minX, n.pos_x);
+    minY = Math.min(minY, n.pos_y);
+    maxX = Math.max(maxX, n.pos_x + w);
+    maxY = Math.max(maxY, n.pos_y + h);
+  });
+  const pad = 120;
+  minX -= pad;
+  minY -= pad;
+  maxX = Math.max(maxX + pad, minX + minCanvasW);
+  maxY = Math.max(maxY + pad, minY + minCanvasH);
+  return {
+    minX, minY, maxX, maxY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+    nodes
+  };
+}
+function requestMinimapRender() {
+  if (!minimapState.enabled || minimapState.raf) return;
+  minimapState.raf = requestAnimationFrame(() => {
+    minimapState.raf = 0;
+    renderMinimap();
+  });
+}
+function renderMinimap() {
+  if (!minimapState.enabled) return;
+  const ctx = minimapCanvas.getContext('2d');
+  const cw = minimapCanvas.width;
+  const ch = minimapCanvas.height;
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.fillStyle = '#0d1b30';
+  ctx.fillRect(0, 0, cw, ch);
+
+  const bounds = computeMinimapBounds();
+  const inset = 6;
+  const scale = Math.min((cw - inset * 2) / bounds.width, (ch - inset * 2) / bounds.height);
+  const drawW = bounds.width * scale;
+  const drawH = bounds.height * scale;
+  const offX = (cw - drawW) / 2;
+  const offY = (ch - drawH) / 2;
+
+  ctx.strokeStyle = '#0E5E8C66';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(offX, offY, drawW, drawH);
+
+  bounds.nodes.forEach(n => {
+    const el = document.getElementById('node-' + n.id);
+    const nw = Math.max(5, ((el && el.offsetWidth) ? el.offsetWidth : 240) * scale);
+    const nh = Math.max(4, ((el && el.offsetHeight) ? el.offsetHeight : 130) * scale);
+    const x = offX + (n.pos_x - bounds.minX) * scale;
+    const y = offY + (n.pos_y - bounds.minY) * scale;
+    const color = NODE_MINIMAP_COLORS[(n.data && n.data.type) || n.name] || '#6f8ba5';
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.75;
+    ctx.fillRect(x, y, nw, nh);
+    ctx.globalAlpha = 1;
+  });
+
+  const zoom = editor.zoom || 1;
+  const viewX = (-editor.canvas_x) / zoom;
+  const viewY = (-editor.canvas_y) / zoom;
+  const viewW = editor.container.clientWidth / zoom;
+  const viewH = editor.container.clientHeight / zoom;
+
+  const vx = offX + (viewX - bounds.minX) * scale;
+  const vy = offY + (viewY - bounds.minY) * scale;
+  const vw = viewW * scale;
+  const vh = viewH * scale;
+  ctx.fillStyle = '#01BDF620';
+  ctx.fillRect(vx, vy, vw, vh);
+  ctx.strokeStyle = '#D6DA01';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(vx, vy, vw, vh);
+
+  minimapState.map = { scale, offX, offY, bounds };
+  minimapZoomLabel.textContent = Math.round(zoom * 100) + '%';
+}
+function centerViewportFromMinimap(clientX, clientY) {
+  if (!minimapState.map) return;
+  const rect = minimapCanvas.getBoundingClientRect();
+  const px = (clientX - rect.left) * (minimapCanvas.width / rect.width);
+  const py = (clientY - rect.top) * (minimapCanvas.height / rect.height);
+  const map = minimapState.map;
+  const worldX = map.bounds.minX + (px - map.offX) / map.scale;
+  const worldY = map.bounds.minY + (py - map.offY) / map.scale;
+  if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return;
+  editor.canvas_x = (editor.container.clientWidth / 2) - worldX * editor.zoom;
+  editor.canvas_y = (editor.container.clientHeight / 2) - worldY * editor.zoom;
+  editor.precanvas.style.transform = 'translate(' + editor.canvas_x + 'px, ' + editor.canvas_y + 'px) scale(' + editor.zoom + ')';
+  requestMinimapRender();
+}
+function toggleMinimap(forceState) {
+  const next = (typeof forceState === 'boolean') ? forceState : !minimapState.enabled;
+  minimapState.enabled = next;
+  minimapPanel.classList.toggle('minimap-hidden', !next);
+  minimapPanel.setAttribute('aria-hidden', String(!next));
+  toggleMinimapBtn.classList.toggle('btn-minimap-active', next);
+  if (!next) return;
+  requestMinimapRender();
+}
+
+minimapCanvas.addEventListener('mousedown', function(e) {
+  if (!minimapState.enabled) return;
+  minimapState.drag = true;
+  centerViewportFromMinimap(e.clientX, e.clientY);
+  e.preventDefault();
+});
+window.addEventListener('mousemove', function(e) {
+  if (!minimapState.drag) return;
+  centerViewportFromMinimap(e.clientX, e.clientY);
+});
+window.addEventListener('mouseup', function() { minimapState.drag = false; });
+window.addEventListener('resize', requestMinimapRender);
+editor.on('translate', requestMinimapRender);
+editor.on('zoom', requestMinimapRender);
+editor.on('nodeCreated', requestMinimapRender);
+editor.on('nodeRemoved', requestMinimapRender);
+editor.on('nodeMoved', requestMinimapRender);
+editor.on('import', function() { setTimeout(requestMinimapRender, 120); });
 
 // Prevent node deletion by Delete or Cmd+Backspace in Drawflow
 editor.precanvas.addEventListener('keydown', function(e) {
@@ -1486,7 +1691,96 @@ document.getElementById('nodeMenuAddBtn').onclick = function() {
   hideNodeMenu();
 };
 document.getElementById('nodeMenuCancelBtn').onclick = hideNodeMenu;
+
+function getConnectionNodeIds(el) {
+  if (!el) return null;
+  const conn = el.classList && el.classList.contains('connection') ? el : el.closest('.connection');
+  if (!conn) return null;
+  const classes = Array.from(conn.classList);
+  const inClass = classes.find(c => c.startsWith('node_in_node-'));
+  const outClass = classes.find(c => c.startsWith('node_out_node-'));
+  if (!inClass || !outClass) return null;
+  const toId = parseInt(inClass.replace('node_in_node-', ''), 10);
+  const fromId = parseInt(outClass.replace('node_out_node-', ''), 10);
+  if (!Number.isFinite(toId) || !Number.isFinite(fromId)) return null;
+  return { fromId, toId };
+}
+
+function jumpToNode(nodeId) {
+  const n = editor.getNodeFromId(nodeId);
+  if (!n) return;
+  const el = document.getElementById('node-' + nodeId);
+  const w = (el && el.offsetWidth) ? el.offsetWidth : 240;
+  const h = (el && el.offsetHeight) ? el.offsetHeight : 130;
+  const centerX = n.pos_x + (w / 2);
+  const centerY = n.pos_y + (h / 2);
+  editor.canvas_x = (editor.container.clientWidth / 2) - centerX * editor.zoom;
+  editor.canvas_y = (editor.container.clientHeight / 2) - centerY * editor.zoom;
+  editor.precanvas.style.transform = 'translate(' + editor.canvas_x + 'px, ' + editor.canvas_y + 'px) scale(' + editor.zoom + ')';
+
+  if (editor.node_selected && editor.node_selected.classList) editor.node_selected.classList.remove('selected');
+  if (el) {
+    el.classList.add('selected');
+    editor.node_selected = el;
+  }
+  requestMinimapRender();
+}
+
+const pathHoverHint = document.getElementById('pathHoverHint');
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function formatNodeRef(nodeId) {
+  try {
+    const n = editor.getNodeFromId(nodeId);
+    if (!n) return `Node ${nodeId}`;
+    const type = (n.data && n.data.type) || n.name || 'Node';
+    const label = (n.data && n.data.label) || `${type} ${nodeId}`;
+    return `${label} (${type})`;
+  } catch (err) {
+    return `Node ${nodeId}`;
+  }
+}
+function showPathHint(clientX, clientY, targetEl) {
+  const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+  const mod = isMac ? 'Cmd' : 'Ctrl';
+  const ids = getConnectionNodeIds(targetEl);
+  const srcName = ids ? escHtml(formatNodeRef(ids.fromId)) : 'source node';
+  const dstName = ids ? escHtml(formatNodeRef(ids.toId)) : 'destination node';
+  const pathLine = ids
+    ? `<div><strong>Path:</strong> ${srcName} → ${dstName}</div>`
+    : '';
+  pathHoverHint.innerHTML =
+    pathLine +
+    `<div>${mod}+Click: jump to destination node ${dstName}</div>` +
+    `<div>${mod}+Shift+Click: jump to source node ${srcName}</div>`;
+  pathHoverHint.style.left = (clientX + 14) + 'px';
+  pathHoverHint.style.top = (clientY + 14) + 'px';
+  pathHoverHint.style.display = 'block';
+}
+function hidePathHint() {
+  pathHoverHint.style.display = 'none';
+}
+
 editor.precanvas.addEventListener('click', function(e) {
+  const isJumpGesture = e.metaKey || e.ctrlKey;
+  const pathTarget = e.target.classList && (e.target.classList.contains('main-path') || e.target.classList.contains('connection'));
+  if (isJumpGesture && pathTarget) {
+    const ids = getConnectionNodeIds(e.target);
+    if (ids) {
+      // Default jump target is the downstream node; hold Shift to jump upstream.
+      jumpToNode(e.shiftKey ? ids.fromId : ids.toId);
+      hideNodeMenu();
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+  }
   if (e.target.classList.contains('output')) {
     const nd = e.target.closest('.drawflow-node');
     const pId = parseInt(nd.id.replace('node-',''));
@@ -1496,7 +1790,14 @@ editor.precanvas.addEventListener('click', function(e) {
     e.stopPropagation();
   }
 });
+editor.precanvas.addEventListener('mousemove', function(e) {
+  const onPath = e.target.classList && e.target.classList.contains('main-path');
+  if (onPath) showPathHint(e.clientX, e.clientY, e.target);
+  else hidePathHint();
+});
+editor.precanvas.addEventListener('mouseleave', hidePathHint);
 document.body.addEventListener('mousedown', function(e) {
+  hidePathHint();
   if (document.getElementById('nodeMenu').style.display==='block' &&
       !document.getElementById('nodeMenu').contains(e.target)) hideNodeMenu();
 });
@@ -1568,6 +1869,7 @@ function autoArrange() {
 
   // Redraw all connections
   nodes.forEach(n => editor.updateConnectionNodes('node-'+n.id));
+  requestMinimapRender();
 }
 
 // ─────────────────────────────────────────────
@@ -1615,6 +1917,7 @@ editor.on('import', function() {
         }
       }
     });
+    requestMinimapRender();
   }, 100);
 });
 
@@ -2497,6 +2800,7 @@ window.loadFlow = loadFlow;
 window.addNodeStandalone = addNodeStandalone;
 window.autoArrange = autoArrange;
 window.generatePythonScript = generatePythonScript;
+window.toggleMinimap = toggleMinimap;
 </script>
 </body>
 </html>
