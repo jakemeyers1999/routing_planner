@@ -71,32 +71,49 @@
     /* ── Node type colors — all grounded in the brand palette ── */
     .drawflow-node { border-radius:8px; min-width:210px; max-width:250px; padding:0!important; }
     /* Sky Blue  — entry points */
-    .drawflow-node[data-node="TrackingNumber"] { border:2px solid #01BDF6!important; background:#071d30; }
+    .drawflow-node[data-node="TrackingNumber"] { border:2px solid #01BDF6!important; background:rgba(7,29,48,.92); }
     /* Nebula Blue — routing/logic */
-    .drawflow-node[data-node="IVR"]            { border:2px solid #0796CA!important; background:#071525; }
+    .drawflow-node[data-node="IVR"]            { border:2px solid #0796CA!important; background:rgba(7,21,37,.92); }
     /* Dark Matter Blue — waiting/queue */
-    .drawflow-node[data-node="Queue"]          { border:2px solid #0E5E8C!important; background:#060f1e; }
+    .drawflow-node[data-node="Queue"]          { border:2px solid #0E5E8C!important; background:rgba(6,15,30,.92); }
     /* Supernova Lime — smart/AI routing */
-    .drawflow-node[data-node="SmartRouter"]    { border:2px solid #D6DA01!important; background:#0d1200; }
+    .drawflow-node[data-node="SmartRouter"]    { border:2px solid #D6DA01!important; background:rgba(13,18,0,.92); }
     /* Sky Blue lighter bg — destinations */
-    .drawflow-node[data-node="ReceivingNumber"]{ border:2px solid #01BDF6!important; background:#071525; }
+    .drawflow-node[data-node="ReceivingNumber"]{ border:2px solid #01BDF6!important; background:rgba(7,21,37,.92); }
     /* Nebula Blue tint — voicemail */
-    .drawflow-node[data-node="Voicemail"]      { border:2px solid #0796CA!important; background:#071d30; }
+    .drawflow-node[data-node="Voicemail"]      { border:2px solid #0796CA!important; background:rgba(7,29,48,.92); }
     /* Galaxy Grey dashed — fallback path */
-    .drawflow-node[data-node="NoAnswer"]       { border:2px dashed #4a5c6e!important; background:#131a20; }
+    .drawflow-node[data-node="NoAnswer"]       { border:2px dashed #4a5c6e!important; background:rgba(19,26,32,.92); }
     /* Supernova Lime — terminal actions */
-    .drawflow-node[data-node="TrackingSource"]  { border:2px solid #01BDF6!important; background:#16294F!important; }
-    .drawflow-node[data-node="EndAction"]      { border:2px solid #D6DA01!important; background:#0d1200; }
+    .drawflow-node[data-node="TrackingSource"]  { border:2px solid #01BDF6!important; background:rgba(22,41,79,.92)!important; }
+    .drawflow-node[data-node="EndAction"]      { border:2px solid #D6DA01!important; background:rgba(13,18,0,.92); }
+    .drawflow-node[data-node="VoiceBot"]       { border:2px solid #D6DA01!important; background:rgba(10,16,0,.92); }
+
+    /* If a non-owned connection runs under a node, reduce background opacity so line remains visible. */
+    .drawflow-node.node-line-pass[data-node="TrackingNumber"] { background:rgba(7,29,48,.62)!important; }
+    .drawflow-node.node-line-pass[data-node="IVR"]            { background:rgba(7,21,37,.62)!important; }
+    .drawflow-node.node-line-pass[data-node="Queue"]          { background:rgba(6,15,30,.62)!important; }
+    .drawflow-node.node-line-pass[data-node="SmartRouter"]    { background:rgba(13,18,0,.62)!important; }
+    .drawflow-node.node-line-pass[data-node="ReceivingNumber"]{ background:rgba(7,21,37,.62)!important; }
+    .drawflow-node.node-line-pass[data-node="Voicemail"]      { background:rgba(7,29,48,.62)!important; }
+    .drawflow-node.node-line-pass[data-node="NoAnswer"]       { background:rgba(19,26,32,.62)!important; }
+    .drawflow-node.node-line-pass[data-node="TrackingSource"] { background:rgba(22,41,79,.62)!important; }
+    .drawflow-node.node-line-pass[data-node="EndAction"]      { background:rgba(13,18,0,.62)!important; }
+    .drawflow-node.node-line-pass[data-node="VoiceBot"]       { background:rgba(10,16,0,.62)!important; }
 
     /* Port hover glow */
     .drawflow .output:hover, .drawflow .input:hover { box-shadow:0 0 8px 2px #01BDF6; }
 
-    /* Selected state — subtle Sky Blue glow, no background override */
+    /* Selected state — inset-only highlight to avoid any apparent layout/view shift */
     .drawflow .drawflow-node.selected {
       background: inherit !important;
-      outline: 2px solid rgba(1,189,246,0.6) !important;
-      box-shadow: 0 0 0 4px rgba(1,189,246,0.12), 0 0 20px rgba(1,189,246,0.08) !important;
+      outline: none !important;
+      box-shadow:
+        inset 0 0 0 2px rgba(1,189,246,0.92),
+        inset 0 0 0 4px rgba(214,218,1,0.35) !important;
     }
+    .drawflow .drawflow-node.selected .node-type-badge { color:#D6DA01; }
+    .drawflow .drawflow-node.selected .drawflow-node-label { color:#ffffff; }
 
     /* ── Node inner layout ── */
     .node-inner { padding:10px 12px 6px 12px; }
@@ -207,7 +224,7 @@
     #toolbar .btn-import:hover { background:#01BDF6; color:#16294F; }
 
     /* ── VoiceBot node — Supernova Lime like SmartRouter (AI routing) ── */
-    .drawflow-node[data-node="VoiceBot"] { border:2px solid #D6DA01!important; background:#0a1000; }
+    .drawflow-node[data-node="VoiceBot"] { border:2px solid #D6DA01!important; background:rgba(10,16,0,.92); }
 
     /* ── CTM Import Panel ── */
     #ctmImportPanel { width:480px; }
@@ -902,6 +919,51 @@ editor.on('nodeCreated', requestMinimapRender);
 editor.on('nodeRemoved', requestMinimapRender);
 editor.on('nodeMoved', requestMinimapRender);
 editor.on('import', function() { setTimeout(requestMinimapRender, 120); });
+
+// ─────────────────────────────────────────────
+// Smart node transparency when lines pass underneath
+// ─────────────────────────────────────────────
+const linePassState = { raf: 0 };
+function rectsIntersect(a, b) {
+  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+}
+function updateNodeLinePassStates() {
+  linePassState.raf = 0;
+  const nodes = Array.from(document.querySelectorAll('.drawflow-node'));
+  if (!nodes.length) return;
+  const conns = Array.from(document.querySelectorAll('.connection'));
+
+  nodes.forEach(nodeEl => {
+    const nodeRect = nodeEl.getBoundingClientRect();
+    const nodeId = nodeEl.id.replace('node-', '');
+    let hasPass = false;
+
+    for (const c of conns) {
+      // Ignore connections owned by this node (incoming/outgoing anchors)
+      if (c.classList.contains('node_in_node-' + nodeId) || c.classList.contains('node_out_node-' + nodeId)) continue;
+      const cRect = c.getBoundingClientRect();
+      if (!cRect.width || !cRect.height) continue;
+      if (rectsIntersect(nodeRect, cRect)) {
+        hasPass = true;
+        break;
+      }
+    }
+    nodeEl.classList.toggle('node-line-pass', hasPass);
+  });
+}
+function requestLinePassUpdate() {
+  if (linePassState.raf) return;
+  linePassState.raf = requestAnimationFrame(updateNodeLinePassStates);
+}
+editor.on('translate', requestLinePassUpdate);
+editor.on('zoom', requestLinePassUpdate);
+editor.on('nodeMoved', requestLinePassUpdate);
+editor.on('nodeCreated', requestLinePassUpdate);
+editor.on('nodeRemoved', requestLinePassUpdate);
+editor.on('connectionCreated', requestLinePassUpdate);
+editor.on('connectionRemoved', requestLinePassUpdate);
+editor.on('import', function() { setTimeout(requestLinePassUpdate, 150); });
+window.addEventListener('resize', requestLinePassUpdate);
 
 // Prevent node deletion by Delete or Cmd+Backspace in Drawflow
 editor.precanvas.addEventListener('keydown', function(e) {
@@ -1870,6 +1932,7 @@ function autoArrange() {
   // Redraw all connections
   nodes.forEach(n => editor.updateConnectionNodes('node-'+n.id));
   requestMinimapRender();
+  requestLinePassUpdate();
 }
 
 // ─────────────────────────────────────────────
