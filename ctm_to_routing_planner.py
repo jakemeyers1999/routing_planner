@@ -258,6 +258,49 @@ class RoutingGraph:
             self.edges.append((from_key, output_idx, to_key))
 
 
+def ensure_terminal_no_answer(graph: RoutingGraph):
+    """
+    Ensure every leaf routing path ends in an explicit NoAnswer node.
+    Uses a shared terminal node configured as hangup.
+    """
+    if not graph.nodes:
+        return
+
+    out_map: Dict[str, List[int]] = {k: [] for k in graph.nodes}
+    for fk, oi, _ in graph.edges:
+        if fk in out_map:
+            out_map[fk].append(oi)
+
+    terminal_key = graph.add_node(
+        "NoAnswer",
+        "terminal_hangup",
+        ntype="NoAnswer",
+        label="No Answer (Hangup)",
+        output_labels=[""],
+        config={
+            "noAnswerAction": "hangup",
+            "maxRings": "0",
+            "missedCallAlert": False,
+        },
+        notes="Terminal fallback path: Hangup",
+    )
+
+    skip_types = {"NoAnswer", "EndAction", "Trigger"}
+    leaf_keys = [
+        k
+        for k, node in graph.nodes.items()
+        if k != terminal_key
+        and node.get("ntype") not in skip_types
+        and len(out_map.get(k, [])) == 0
+    ]
+
+    for k in leaf_keys:
+        # First/only output for true leaves; next available for safety.
+        used = out_map.get(k, [])
+        next_idx = (max(used) + 1) if used else 0
+        graph.add_edge(k, next_idx, terminal_key)
+
+
 # ── Fetch helpers ──────────────────────────────────────────────────────────
 
 def safe_get(client: CTMClient, path: str, label: str = "") -> Dict:
@@ -1270,6 +1313,7 @@ def main():
         include_call_triggers=bool(args.include_call_triggers),
         enrich_mode=str(args.enrich_mode or "active"),
     )
+    ensure_terminal_no_answer(graph)
 
     print(f"\nAssigning layout positions...")
     assign_positions(graph)
